@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  distDir: process.env.NEXT_DIST_DIR || ".next",
+  distDir: process.env.VERCEL ? ".next" : process.env.NEXT_DIST_DIR || ".next",
   experimental: {
     optimizePackageImports: ["framer-motion"]
   },

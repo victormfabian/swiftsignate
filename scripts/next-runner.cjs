@@ -8,12 +8,13 @@ if (!command || !distDir) {
 }
 
 const nextBin = require.resolve("next/dist/bin/next");
+const resolvedDistDir = process.env.VERCEL ? ".next" : distDir;
 
 const child = spawn(process.execPath, [nextBin, command, ...args], {
   stdio: "inherit",
   env: {
     ...process.env,
-    NEXT_DIST_DIR: distDir
+    NEXT_DIST_DIR: resolvedDistDir
   }
 });
 
@@ -25,4 +26,3 @@ child.on("exit", (code, signal) => {
 
   process.exit(code ?? 0);
 });
-
