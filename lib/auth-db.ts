@@ -47,7 +47,7 @@ type DatabaseSessionResult =
 
 const DB_PATH = join(process.cwd(), "data", "swift-signate-auth.db");
 const DEFAULT_ADMIN_EMAIL = "admin@swiftsignate.com";
-const DEFAULT_ADMIN_PASSWORD = "Swift@2026";
+const DEFAULT_ADMIN_PASSWORD = "Superswift@vakes.26";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const ADMIN_SESSION_TTL_MS = 1000 * 60 * 60 * 12;
 
@@ -153,6 +153,11 @@ function seedDefaultAdminSqlite(db: SqliteDatabase) {
     .get(DEFAULT_ADMIN_EMAIL.toLowerCase()) as { id: string } | undefined;
 
   if (existingAdmin) {
+    db.prepare("UPDATE admins SET name = ?, password_hash = ? WHERE id = ?").run(
+      "Swift Signate Admin",
+      hashPassword(DEFAULT_ADMIN_PASSWORD),
+      existingAdmin.id
+    );
     return;
   }
 
@@ -172,6 +177,11 @@ async function seedDefaultAdminMySql() {
   ];
 
   if (rows.length > 0) {
+    await pool.query("UPDATE admins SET name = ?, password_hash = ? WHERE email = ?", [
+      "Swift Signate Admin",
+      hashPassword(DEFAULT_ADMIN_PASSWORD),
+      DEFAULT_ADMIN_EMAIL.toLowerCase()
+    ]);
     return;
   }
 

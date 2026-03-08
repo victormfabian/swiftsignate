@@ -13,7 +13,7 @@ import {
   type ShipmentStatus,
   useShipmentStore
 } from "@/components/shipment-store";
-import { type SiteContent, useSiteContentStore } from "@/components/site-content-store";
+import { type ContentCard, type SiteContent, useSiteContentStore } from "@/components/site-content-store";
 
 const shipmentStatuses: ShipmentStatus[] = ["Booked", "Picked up", "In transit", "Out for delivery", "Delivered"];
 const paymentMethodOptions = ["Direct transfer", "Paystack"] as const;
@@ -66,6 +66,10 @@ function MetricCard({ label, value, detail, delay = 0 }: MetricCardProps) {
   );
 }
 
+function cloneContent(content: SiteContent) {
+  return JSON.parse(JSON.stringify(content)) as SiteContent;
+}
+
 export function AdminPage() {
   const {
     shipments,
@@ -101,7 +105,7 @@ export function AdminPage() {
   const [requestDraft, setRequestDraft] = useState<PaymentRequest | null>(null);
   const [shipmentMessage, setShipmentMessage] = useState("");
   const [requestMessage, setRequestMessage] = useState("");
-  const [contentDraft, setContentDraft] = useState(JSON.stringify(content, null, 2));
+  const [contentDraft, setContentDraft] = useState<SiteContent>(cloneContent(content));
   const [contentMessage, setContentMessage] = useState("");
   const [selectedContactRequestId, setSelectedContactRequestId] = useState("");
   const [contactRequestDraft, setContactRequestDraft] = useState<ContactRequest | null>(null);
@@ -142,7 +146,7 @@ export function AdminPage() {
   }, [contactRequests, selectedContactRequestId]);
 
   useEffect(() => {
-    setContentDraft(JSON.stringify(content, null, 2));
+    setContentDraft(cloneContent(content));
   }, [content]);
 
   const totals = {
@@ -162,6 +166,99 @@ export function AdminPage() {
 
   const handleContactRequestField = <K extends keyof ContactRequest>(field: K, value: ContactRequest[K]) => {
     setContactRequestDraft((current) => (current ? { ...current, [field]: value } : current));
+  };
+
+  const handleContentField = <
+    Section extends keyof SiteContent,
+    Field extends keyof SiteContent[Section]
+  >(
+    section: Section,
+    field: Field,
+    value: SiteContent[Section][Field]
+  ) => {
+    setContentDraft((current) => ({
+      ...current,
+      [section]: {
+        ...current[section],
+        [field]: value
+      }
+    }));
+  };
+
+  const handleCardField = (
+    section: "services" | "whyUs",
+    index: number,
+    field: keyof ContentCard,
+    value: string
+  ) => {
+    if (section === "services") {
+      setContentDraft((current) => {
+        const cards = [...current.services.cards];
+        cards[index] = {
+          ...cards[index],
+          [field]: value
+        };
+
+        return {
+          ...current,
+          services: {
+            ...current.services,
+            cards
+          }
+        };
+      });
+      return;
+    }
+
+    setContentDraft((current) => {
+      const cards = [...current.whyUs.points];
+      cards[index] = {
+        ...cards[index],
+        [field]: value
+      };
+
+      return {
+        ...current,
+        whyUs: {
+          ...current.whyUs,
+          points: cards
+        }
+      };
+    });
+  };
+
+  const handleProcessStepField = (index: number, field: "title" | "copy" | "icon", value: string) => {
+    setContentDraft((current) => {
+      const steps = [...current.process.steps];
+      steps[index] = {
+        ...steps[index],
+        [field]: value
+      };
+
+      return {
+        ...current,
+        process: {
+          ...current.process,
+          steps
+        }
+      };
+    });
+  };
+
+  const handleStepLabelField = (
+    field: keyof SiteContent["customerPages"]["stepLabels"],
+    value: string
+  ) => {
+    setContentDraft((current) => ({
+      ...current,
+      customerPages: {
+        ...current.customerPages,
+        stepLabels: {
+          ...current.customerPages.stepLabels,
+          [field]: value
+        }
+      }
+    }));
   };
 
   const handleSaveShipment = async () => {
@@ -239,23 +336,12 @@ export function AdminPage() {
     }
   };
 
-  const handleFormatContent = () => {
-    try {
-      const parsed = JSON.parse(contentDraft) as SiteContent;
-      setContentDraft(JSON.stringify(parsed, null, 2));
-      setContentMessage("Content JSON formatted.");
-    } catch {
-      setContentMessage("Content JSON is invalid. Fix the structure before formatting.");
-    }
-  };
-
   const handleSaveContent = async () => {
     try {
-      const parsed = JSON.parse(contentDraft) as SiteContent;
-      await updateContent(parsed);
+      await updateContent(contentDraft);
       setContentMessage("Landing page, booking copy, icons, and images were updated.");
     } catch {
-      setContentMessage("Content JSON is invalid. Fix the syntax and try again.");
+      setContentMessage("Could not save the site content right now.");
     }
   };
 
@@ -296,7 +382,7 @@ export function AdminPage() {
   }
 
   return (
-    <ConsoleShell active="admin" eyebrow="Operations workspace" title="Verify payments, edit shipments, and manage site content">
+    <ConsoleShell active="admin" eyebrow="Swift Admin" title="Manage payments, bookings, content, and customer records">
       <div className="space-y-6">
         <div className="flex flex-col gap-3 rounded-[24px] border border-black/8 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-neutral-700">
@@ -306,7 +392,7 @@ export function AdminPage() {
             type="button"
             onClick={() => {
               void signOut();
-              window.location.href = "/admin/signin";
+              window.location.href = "/swiftadmin/signin";
             }}
             className="inline-flex min-h-[44px] items-center justify-center rounded-[12px] border border-black/10 bg-white px-5 text-sm font-medium text-neutral-700"
           >
@@ -941,26 +1027,368 @@ export function AdminPage() {
               <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Edit landing page, booking modal, icons, images, and copy</h2>
             </div>
             <div className="text-sm text-neutral-500">
-              Save JSON here to update hero content, service cards, icons, contact modal copy, and customer-page text.
+              Update every section from forms instead of editing raw JSON.
             </div>
           </div>
 
-          <div className="mt-6 rounded-[24px] border border-black/8 bg-white p-5 shadow-[0_10px_18px_rgba(140,110,78,0.05)]">
-            <textarea
-              value={contentDraft}
-              onChange={(event) => setContentDraft(event.target.value)}
-              spellCheck={false}
-              className="min-h-[520px] w-full rounded-[20px] border border-black/8 bg-[#faf9f7] px-4 py-4 font-mono text-[13px] leading-6 text-neutral-900 outline-none transition-colors focus:border-orange-300"
-            />
+          <div className="mt-6 space-y-5 rounded-[24px] border border-black/8 bg-white p-5 shadow-[0_10px_18px_rgba(140,110,78,0.05)]">
+            <div className="rounded-[22px] border border-black/8 bg-[#fcfaf7] p-5">
+              <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Header and contact modal</div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label>
+                  <span className={labelClassName}>Contact button label</span>
+                  <input
+                    value={contentDraft.navigation.contactButtonLabel}
+                    onChange={(event) => handleContentField("navigation", "contactButtonLabel", event.target.value)}
+                    className={fieldClassName}
+                  />
+                </label>
+                <label>
+                  <span className={labelClassName}>Contact email</span>
+                  <input
+                    value={contentDraft.navigation.contactEmail}
+                    onChange={(event) => handleContentField("navigation", "contactEmail", event.target.value)}
+                    className={fieldClassName}
+                  />
+                </label>
+                <label>
+                  <span className={labelClassName}>Modal eyebrow</span>
+                  <input
+                    value={contentDraft.navigation.contactModalEyebrow}
+                    onChange={(event) => handleContentField("navigation", "contactModalEyebrow", event.target.value)}
+                    className={fieldClassName}
+                  />
+                </label>
+                <label>
+                  <span className={labelClassName}>Modal submit label</span>
+                  <input
+                    value={contentDraft.navigation.contactModalSubmitLabel}
+                    onChange={(event) => handleContentField("navigation", "contactModalSubmitLabel", event.target.value)}
+                    className={fieldClassName}
+                  />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Modal title</span>
+                  <input
+                    value={contentDraft.navigation.contactModalTitle}
+                    onChange={(event) => handleContentField("navigation", "contactModalTitle", event.target.value)}
+                    className={fieldClassName}
+                  />
+                </label>
+                <label>
+                  <span className={labelClassName}>WhatsApp button label</span>
+                  <input
+                    value={contentDraft.navigation.whatsappLabel}
+                    onChange={(event) => handleContentField("navigation", "whatsappLabel", event.target.value)}
+                    className={fieldClassName}
+                  />
+                </label>
+                <label>
+                  <span className={labelClassName}>Email button label</span>
+                  <input
+                    value={contentDraft.navigation.emailLabel}
+                    onChange={(event) => handleContentField("navigation", "emailLabel", event.target.value)}
+                    className={fieldClassName}
+                  />
+                </label>
+              </div>
+            </div>
 
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-              <button
-                type="button"
-                onClick={handleFormatContent}
-                className="inline-flex min-h-[48px] items-center justify-center rounded-[12px] border border-black/10 bg-white px-5 text-sm font-medium text-neutral-700"
-              >
-                Format JSON
-              </button>
+            <div className="rounded-[22px] border border-black/8 bg-[#fcfaf7] p-5">
+              <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Hero</div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label>
+                  <span className={labelClassName}>Eyebrow</span>
+                  <input
+                    value={contentDraft.hero.eyebrow}
+                    onChange={(event) => handleContentField("hero", "eyebrow", event.target.value)}
+                    className={fieldClassName}
+                  />
+                </label>
+                <label>
+                  <span className={labelClassName}>Book button label</span>
+                  <input
+                    value={contentDraft.hero.bookButtonLabel}
+                    onChange={(event) => handleContentField("hero", "bookButtonLabel", event.target.value)}
+                    className={fieldClassName}
+                  />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Title</span>
+                  <input
+                    value={contentDraft.hero.title}
+                    onChange={(event) => handleContentField("hero", "title", event.target.value)}
+                    className={fieldClassName}
+                  />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Copy</span>
+                  <textarea
+                    value={contentDraft.hero.copy}
+                    onChange={(event) => handleContentField("hero", "copy", event.target.value)}
+                    className={areaClassName}
+                  />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Background image / CSS background</span>
+                  <textarea
+                    value={contentDraft.hero.backgroundImage}
+                    onChange={(event) => handleContentField("hero", "backgroundImage", event.target.value)}
+                    className={areaClassName}
+                  />
+                </label>
+                <label>
+                  <span className={labelClassName}>Track button label</span>
+                  <input
+                    value={contentDraft.hero.trackButtonLabel}
+                    onChange={(event) => handleContentField("hero", "trackButtonLabel", event.target.value)}
+                    className={fieldClassName}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="rounded-[22px] border border-black/8 bg-[#fcfaf7] p-5">
+              <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Services</div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label>
+                  <span className={labelClassName}>Eyebrow</span>
+                  <input value={contentDraft.services.eyebrow} onChange={(event) => handleContentField("services", "eyebrow", event.target.value)} className={fieldClassName} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Title</span>
+                  <input value={contentDraft.services.title} onChange={(event) => handleContentField("services", "title", event.target.value)} className={fieldClassName} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Copy</span>
+                  <textarea value={contentDraft.services.copy} onChange={(event) => handleContentField("services", "copy", event.target.value)} className={areaClassName} />
+                </label>
+              </div>
+              <div className="mt-5 grid gap-4 xl:grid-cols-3">
+                {contentDraft.services.cards.map((card, index) => (
+                  <div key={`${card.title}-${index}`} className="rounded-[20px] border border-black/8 bg-white p-4">
+                    <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Service card {index + 1}</div>
+                    <div className="mt-3 space-y-4">
+                      <label>
+                        <span className={labelClassName}>Title</span>
+                        <input value={card.title} onChange={(event) => handleCardField("services", index, "title", event.target.value)} className={fieldClassName} />
+                      </label>
+                      <label>
+                        <span className={labelClassName}>Icon key</span>
+                        <input value={card.icon} onChange={(event) => handleCardField("services", index, "icon", event.target.value)} className={fieldClassName} />
+                      </label>
+                      <label>
+                        <span className={labelClassName}>Image / CSS background</span>
+                        <textarea value={card.image ?? ""} onChange={(event) => handleCardField("services", index, "image", event.target.value)} className={areaClassName} />
+                      </label>
+                      <label>
+                        <span className={labelClassName}>Copy</span>
+                        <textarea value={card.copy} onChange={(event) => handleCardField("services", index, "copy", event.target.value)} className={areaClassName} />
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[22px] border border-black/8 bg-[#fcfaf7] p-5">
+              <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Why choose us</div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label>
+                  <span className={labelClassName}>Eyebrow</span>
+                  <input value={contentDraft.whyUs.eyebrow} onChange={(event) => handleContentField("whyUs", "eyebrow", event.target.value)} className={fieldClassName} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Title</span>
+                  <input value={contentDraft.whyUs.title} onChange={(event) => handleContentField("whyUs", "title", event.target.value)} className={fieldClassName} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Copy</span>
+                  <textarea value={contentDraft.whyUs.copy} onChange={(event) => handleContentField("whyUs", "copy", event.target.value)} className={areaClassName} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Section image / CSS background</span>
+                  <textarea value={contentDraft.whyUs.image} onChange={(event) => handleContentField("whyUs", "image", event.target.value)} className={areaClassName} />
+                </label>
+              </div>
+              <div className="mt-5 grid gap-4 xl:grid-cols-3">
+                {contentDraft.whyUs.points.map((point, index) => (
+                  <div key={`${point.title}-${index}`} className="rounded-[20px] border border-black/8 bg-white p-4">
+                    <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Why us card {index + 1}</div>
+                    <div className="mt-3 space-y-4">
+                      <label>
+                        <span className={labelClassName}>Title</span>
+                        <input value={point.title} onChange={(event) => handleCardField("whyUs", index, "title", event.target.value)} className={fieldClassName} />
+                      </label>
+                      <label>
+                        <span className={labelClassName}>Icon key</span>
+                        <input value={point.icon} onChange={(event) => handleCardField("whyUs", index, "icon", event.target.value)} className={fieldClassName} />
+                      </label>
+                      <label>
+                        <span className={labelClassName}>Copy</span>
+                        <textarea value={point.copy} onChange={(event) => handleCardField("whyUs", index, "copy", event.target.value)} className={areaClassName} />
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[22px] border border-black/8 bg-[#fcfaf7] p-5">
+              <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">How it works</div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label>
+                  <span className={labelClassName}>Eyebrow</span>
+                  <input value={contentDraft.process.eyebrow} onChange={(event) => handleContentField("process", "eyebrow", event.target.value)} className={fieldClassName} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Title</span>
+                  <input value={contentDraft.process.title} onChange={(event) => handleContentField("process", "title", event.target.value)} className={fieldClassName} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Copy</span>
+                  <textarea value={contentDraft.process.copy} onChange={(event) => handleContentField("process", "copy", event.target.value)} className={areaClassName} />
+                </label>
+              </div>
+              <div className="mt-5 grid gap-4 xl:grid-cols-3">
+                {contentDraft.process.steps.map((step, index) => (
+                  <div key={`${step.title}-${index}`} className="rounded-[20px] border border-black/8 bg-white p-4">
+                    <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Process step {index + 1}</div>
+                    <div className="mt-3 space-y-4">
+                      <label>
+                        <span className={labelClassName}>Title</span>
+                        <input value={step.title} onChange={(event) => handleProcessStepField(index, "title", event.target.value)} className={fieldClassName} />
+                      </label>
+                      <label>
+                        <span className={labelClassName}>Icon key</span>
+                        <input value={step.icon} onChange={(event) => handleProcessStepField(index, "icon", event.target.value)} className={fieldClassName} />
+                      </label>
+                      <label>
+                        <span className={labelClassName}>Copy</span>
+                        <textarea value={step.copy} onChange={(event) => handleProcessStepField(index, "copy", event.target.value)} className={areaClassName} />
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[22px] border border-black/8 bg-[#fcfaf7] p-5">
+              <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Contact CTA and customer pages</div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label>
+                  <span className={labelClassName}>CTA eyebrow</span>
+                  <input value={contentDraft.contactCta.eyebrow} onChange={(event) => handleContentField("contactCta", "eyebrow", event.target.value)} className={fieldClassName} />
+                </label>
+                <label>
+                  <span className={labelClassName}>CTA primary label</span>
+                  <input value={contentDraft.contactCta.primaryLabel} onChange={(event) => handleContentField("contactCta", "primaryLabel", event.target.value)} className={fieldClassName} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>CTA title</span>
+                  <input value={contentDraft.contactCta.title} onChange={(event) => handleContentField("contactCta", "title", event.target.value)} className={fieldClassName} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>CTA copy</span>
+                  <textarea value={contentDraft.contactCta.copy} onChange={(event) => handleContentField("contactCta", "copy", event.target.value)} className={areaClassName} />
+                </label>
+                <label>
+                  <span className={labelClassName}>CTA secondary label</span>
+                  <input value={contentDraft.contactCta.secondaryLabel} onChange={(event) => handleContentField("contactCta", "secondaryLabel", event.target.value)} className={fieldClassName} />
+                </label>
+              </div>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <label>
+                  <span className={labelClassName}>Customer eyebrow</span>
+                  <input value={contentDraft.customerPages.eyebrow} onChange={(event) => handleContentField("customerPages", "eyebrow", event.target.value)} className={fieldClassName} />
+                </label>
+                <label>
+                  <span className={labelClassName}>Book page title</span>
+                  <input value={contentDraft.customerPages.bookTitle} onChange={(event) => handleContentField("customerPages", "bookTitle", event.target.value)} className={fieldClassName} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Book page copy</span>
+                  <textarea value={contentDraft.customerPages.bookCopy} onChange={(event) => handleContentField("customerPages", "bookCopy", event.target.value)} className={areaClassName} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Book helper</span>
+                  <textarea value={contentDraft.customerPages.bookHelper} onChange={(event) => handleContentField("customerPages", "bookHelper", event.target.value)} className={areaClassName} />
+                </label>
+                <label>
+                  <span className={labelClassName}>Track page title</span>
+                  <input value={contentDraft.customerPages.trackTitle} onChange={(event) => handleContentField("customerPages", "trackTitle", event.target.value)} className={fieldClassName} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Track page copy</span>
+                  <textarea value={contentDraft.customerPages.trackCopy} onChange={(event) => handleContentField("customerPages", "trackCopy", event.target.value)} className={areaClassName} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Track helper</span>
+                  <textarea value={contentDraft.customerPages.trackHelper} onChange={(event) => handleContentField("customerPages", "trackHelper", event.target.value)} className={areaClassName} />
+                </label>
+                <label>
+                  <span className={labelClassName}>Contact section title</span>
+                  <input value={contentDraft.customerPages.contactTitle} onChange={(event) => handleContentField("customerPages", "contactTitle", event.target.value)} className={fieldClassName} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Contact section copy</span>
+                  <textarea value={contentDraft.customerPages.contactCopy} onChange={(event) => handleContentField("customerPages", "contactCopy", event.target.value)} className={areaClassName} />
+                </label>
+                <label>
+                  <span className={labelClassName}>Payment section title</span>
+                  <input value={contentDraft.customerPages.paymentTitle} onChange={(event) => handleContentField("customerPages", "paymentTitle", event.target.value)} className={fieldClassName} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Payment section copy</span>
+                  <textarea value={contentDraft.customerPages.paymentCopy} onChange={(event) => handleContentField("customerPages", "paymentCopy", event.target.value)} className={areaClassName} />
+                </label>
+                <label>
+                  <span className={labelClassName}>Transfer title</span>
+                  <input value={contentDraft.customerPages.transferTitle} onChange={(event) => handleContentField("customerPages", "transferTitle", event.target.value)} className={fieldClassName} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Transfer copy</span>
+                  <textarea value={contentDraft.customerPages.transferCopy} onChange={(event) => handleContentField("customerPages", "transferCopy", event.target.value)} className={areaClassName} />
+                </label>
+                <label>
+                  <span className={labelClassName}>Paystack title</span>
+                  <input value={contentDraft.customerPages.paystackTitle} onChange={(event) => handleContentField("customerPages", "paystackTitle", event.target.value)} className={fieldClassName} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className={labelClassName}>Paystack copy</span>
+                  <textarea value={contentDraft.customerPages.paystackCopy} onChange={(event) => handleContentField("customerPages", "paystackCopy", event.target.value)} className={areaClassName} />
+                </label>
+              </div>
+
+              <div className="mt-6 rounded-[20px] border border-black/8 bg-white p-4">
+                <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Booking step labels</div>
+                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                  <label>
+                    <span className={labelClassName}>Route</span>
+                    <input value={contentDraft.customerPages.stepLabels.route} onChange={(event) => handleStepLabelField("route", event.target.value)} className={fieldClassName} />
+                  </label>
+                  <label>
+                    <span className={labelClassName}>Shipment</span>
+                    <input value={contentDraft.customerPages.stepLabels.shipment} onChange={(event) => handleStepLabelField("shipment", event.target.value)} className={fieldClassName} />
+                  </label>
+                  <label>
+                    <span className={labelClassName}>Delivery</span>
+                    <input value={contentDraft.customerPages.stepLabels.delivery} onChange={(event) => handleStepLabelField("delivery", event.target.value)} className={fieldClassName} />
+                  </label>
+                  <label>
+                    <span className={labelClassName}>Contact</span>
+                    <input value={contentDraft.customerPages.stepLabels.contact} onChange={(event) => handleStepLabelField("contact", event.target.value)} className={fieldClassName} />
+                  </label>
+                  <label>
+                    <span className={labelClassName}>Payment</span>
+                    <input value={contentDraft.customerPages.stepLabels.payment} onChange={(event) => handleStepLabelField("payment", event.target.value)} className={fieldClassName} />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <button
                 type="button"
                 onClick={handleSaveContent}
@@ -975,17 +1403,6 @@ export function AdminPage() {
               >
                 Reset to defaults
               </button>
-            </div>
-
-            <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-[20px] border border-black/8 bg-[#fcfaf7] p-4 text-sm leading-6 text-neutral-700">
-                Use the `backgroundImage`, `image`, and `icon` fields to control visual assets. Service cards, why-us cards, and
-                process steps all update from this JSON.
-              </div>
-              <div className="rounded-[20px] border border-black/8 bg-[#fcfaf7] p-4 text-sm leading-6 text-neutral-700">
-                `customerPages` controls booking-page and modal copy, including step labels and payment messaging for transfer and
-                Paystack.
-              </div>
             </div>
 
             {contentMessage && (

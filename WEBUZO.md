@@ -120,14 +120,14 @@ git push -u origin main
 - `/auth`
 - `/dashboard/book`
 - `/dashboard/track`
-- `/admin/signin`
-- `/admin`
+- `/swiftadmin/signin`
+- `/swiftadmin`
 
 ## Notes
 
 - Admin seed login on first boot:
   - `admin@swiftsignate.com`
-  - `Swift@2026`
+  - `Superswift@vakes.26`
 - The app auto-creates tables for auth, shipments, payment requests, customer updates, and editable site content.
 - Direct-transfer proof uploads are stored as data URLs in the database in the current implementation. For production scale, move those files to object storage and store only file URLs.
 - `.deploy.json` ships with a placeholder path. Update it before using Webuzo Git deployment.

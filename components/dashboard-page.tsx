@@ -2365,7 +2365,7 @@ export function DashboardPage({
   const ShellTag = isModal ? "div" : "main";
 
   return (
-    <ShellTag className={isModal ? "w-full bg-white" : "min-h-screen bg-white px-4 py-6 md:px-6 md:py-8"}>
+    <ShellTag className={isModal ? "w-full bg-white" : "min-h-screen bg-[#f7f4ef] px-4 py-6 md:px-6 md:py-8"}>
       <div className={isModal ? "w-full" : "mx-auto w-full max-w-6xl"}>
         {isModal ? (
           <div
@@ -2407,14 +2407,14 @@ export function DashboardPage({
             </div>
           </div>
         ) : (
-          <header className="flex flex-col gap-5 rounded-[32px] bg-white px-5 py-5 shadow-[0_18px_40px_rgba(140,110,78,0.08)] md:px-8 md:py-6">
+          <header className="flex flex-col gap-5 rounded-[28px] border border-black/8 bg-white px-5 py-5 shadow-[0_16px_34px_rgba(140,110,78,0.06)] md:px-8 md:py-6">
             <div className="flex items-center justify-between gap-4">
               <Link href="/" className="flex items-center gap-3">
                 <LogoMark />
                 <span className="text-sm font-medium text-neutral-700">Swift Signate</span>
               </Link>
               <div className="flex flex-wrap items-center justify-end gap-2">
-                <div className="rounded-full border border-black/8 bg-white px-4 py-2 text-xs uppercase tracking-[0.16em] text-neutral-600">
+                <div className="rounded-full bg-[#fcfaf7] px-4 py-2 text-xs uppercase tracking-[0.16em] text-neutral-600">
                   Signed in as {currentUser?.name}
                 </div>
                 <button
@@ -2423,13 +2423,13 @@ export function DashboardPage({
                     void signOut();
                     router.push("/");
                   }}
-                  className="rounded-full border border-black/8 bg-white px-4 py-2 text-sm text-neutral-700 transition-colors hover:border-orange-300 hover:text-neutral-950"
+                  className="rounded-full bg-[#fcfaf7] px-4 py-2 text-sm text-neutral-700 transition-colors hover:text-neutral-950"
                 >
                   Sign Out
                 </button>
                 <Link
                   href="/"
-                  className="rounded-full border border-black/8 bg-white px-4 py-2 text-sm text-neutral-700 transition-colors hover:border-orange-300 hover:text-neutral-950"
+                  className="rounded-full bg-[#fcfaf7] px-4 py-2 text-sm text-neutral-700 transition-colors hover:text-neutral-950"
                 >
                   Back to Home
                 </Link>
@@ -2438,10 +2438,10 @@ export function DashboardPage({
 
             <div className="max-w-3xl">
               <SectionBadge label="Customer Services" />
-              <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-neutral-950 md:text-5xl">
+              <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-neutral-950 md:text-[2.8rem]">
                 {pageTitle}
               </h1>
-              <p className="mt-4 text-base leading-7 text-neutral-600 md:text-lg">
+              <p className="mt-3 text-base leading-7 text-neutral-600">
                 {pageCopy}
               </p>
             </div>
@@ -2452,13 +2452,13 @@ export function DashboardPage({
           className={
             isModal
               ? "bg-white px-5 pb-5 pt-3 md:px-8 md:pb-8 md:pt-4"
-              : "mt-6 rounded-[32px] bg-white p-5 shadow-[0_18px_40px_rgba(140,110,78,0.08)] md:p-8"
+              : "mt-6 rounded-[28px] border border-black/8 bg-white p-5 shadow-[0_16px_34px_rgba(140,110,78,0.06)] md:p-8"
           }
         >
           {!isModal && (
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               {!isLockedToSingleTab && (
-                <div className="inline-flex rounded-full border border-black/8 bg-white p-1 shadow-[0_8px_18px_rgba(140,110,78,0.06)]">
+                <div className="inline-flex rounded-full bg-[#fcfaf7] p-1">
                   {[
                     { id: "book", label: "Book a Shipment" },
                     { id: "track", label: "Track Shipment" }
@@ -2483,12 +2483,12 @@ export function DashboardPage({
                   })}
                 </div>
               )}
-              <div className="text-sm text-neutral-500">{pageHelper}</div>
+              <div className="max-w-xl text-sm text-neutral-500">{pageHelper}</div>
             </div>
           )}
 
           {notice && (
-            <div className={`${isModal ? "" : "mt-5 "}rounded-[22px] border border-orange-300 bg-white px-4 py-3 text-sm leading-6 text-neutral-700`}>
+            <div className={`${isModal ? "" : "mt-5 "}rounded-[18px] bg-orange-50 px-4 py-3 text-sm leading-6 text-neutral-700`}>
               {notice}
             </div>
           )}
@@ -2498,7 +2498,7 @@ export function DashboardPage({
               {visibleCustomerUpdates.map((update) => (
                 <div
                   key={update.id}
-                  className="rounded-[24px] border border-orange-200 bg-white px-4 py-4 shadow-[0_10px_18px_rgba(140,110,78,0.05)] md:px-5"
+                  className="rounded-[22px] bg-[#fcfaf7] px-4 py-4 md:px-5"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
@@ -2510,7 +2510,7 @@ export function DashboardPage({
                     <button
                       type="button"
                       onClick={() => handleCustomerUpdateDismiss(update.id)}
-                      className="rounded-full border border-black/8 bg-white px-4 py-2 text-xs font-medium uppercase tracking-[0.16em] text-neutral-600 transition-colors hover:border-orange-300 hover:text-neutral-950"
+                    className="rounded-full bg-white px-4 py-2 text-xs font-medium uppercase tracking-[0.16em] text-neutral-600 transition-colors hover:text-neutral-950"
                     >
                       Dismiss
                     </button>
@@ -2525,7 +2525,7 @@ export function DashboardPage({
               notice ? "mt-5" : isModal ? "" : "mt-6",
               isModal
                 ? ""
-                : "overflow-hidden rounded-[30px] border border-black/8 bg-white shadow-[0_12px_24px_rgba(140,110,78,0.06)]"
+                : "overflow-hidden rounded-[26px] border border-black/8 bg-white shadow-[0_12px_24px_rgba(140,110,78,0.06)]"
             ].join(" ")}
           >
             <AnimatePresence mode="wait">{activeTab === "book" ? renderBookTab() : renderTrackTab()}</AnimatePresence>
@@ -2533,7 +2533,7 @@ export function DashboardPage({
         </section>
 
         {!isModal && (
-          <section className="mt-6 rounded-[32px] bg-white p-5 shadow-[0_18px_40px_rgba(140,110,78,0.08)] md:p-8">
+          <section className="mt-6 rounded-[28px] border border-black/8 bg-white p-5 shadow-[0_16px_34px_rgba(140,110,78,0.06)] md:p-8">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <SectionBadge label="Recent Shipments" />

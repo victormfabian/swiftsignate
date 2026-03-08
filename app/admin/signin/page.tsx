@@ -1,5 +1,5 @@
-import { AuthPanel } from "@/components/auth-panel";
+import { redirect } from "next/navigation";
 
-export default function AdminSignInRoute() {
-  return <AuthPanel role="admin" mode="page" nextPath="/admin" />;
+export default function LegacyAdminSignInRoute() {
+  redirect("/swiftadmin/signin");
 }
