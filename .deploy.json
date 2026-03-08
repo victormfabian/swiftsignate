@@ -1,0 +1,19 @@
+{
+  "DEPLOYPATH": "/home/your-webuzo-user/swiftsignate",
+  "task": {
+    "0": "app",
+    "1": "components",
+    "2": "lib",
+    "3": "public",
+    "4": "scripts",
+    "5": "package.json",
+    "6": "package-lock.json",
+    "7": "next.config.ts",
+    "8": "next-env.d.ts",
+    "9": "postcss.config.js",
+    "10": "tailwind.config.js",
+    "11": "tsconfig.json",
+    "12": ".env.example",
+    "13": "WEBUZO.md"
+  }
+}

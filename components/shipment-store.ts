@@ -1,0 +1,252 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import {
+  getShipmentSteps,
+  previewAirWaybill,
+  previewTrackingNumber,
+  type BookingInput,
+  type CustomerUpdate,
+  type PaymentRequest,
+  type Shipment,
+  type ShipmentStatus,
+  type ShipmentStoreState,
+  type TransferRequestInput
+} from "@/lib/shipment-model";
+
+const emptyStore: ShipmentStoreState = {
+  shipments: [],
+  paymentRequests: [],
+  customerUpdates: [],
+  nextSequence: 100001
+};
+
+type StoreResponse = ShipmentStoreState & {
+  ok: boolean;
+};
+
+async function readJson<T>(response: Response) {
+  return (await response.json()) as T;
+}
+
+export {
+  getShipmentSteps,
+  previewAirWaybill,
+  previewTrackingNumber
+};
+export type {
+  BookingInput,
+  CustomerUpdate,
+  PaymentRequest,
+  Shipment,
+  ShipmentStatus,
+  TransferRequestInput
+};
+
+export function useShipmentStore() {
+  const [store, setStore] = useState<ShipmentStoreState>(emptyStore);
+  const [loading, setLoading] = useState(true);
+
+  const refreshStore = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/operations/store", {
+        method: "GET",
+        cache: "no-store"
+      });
+
+      if (!response.ok) {
+        setStore(emptyStore);
+        return;
+      }
+
+      const result = await readJson<StoreResponse>(response);
+      setStore({
+        shipments: result.shipments ?? [],
+        paymentRequests: result.paymentRequests ?? [],
+        customerUpdates: result.customerUpdates ?? [],
+        nextSequence: result.nextSequence ?? 100001
+      });
+    } catch {
+      setStore(emptyStore);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshStore();
+  }, [refreshStore]);
+
+  const bookShipment = useCallback(
+    async (input: BookingInput) => {
+      const response = await fetch("/api/operations/book", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(input)
+      });
+      const result = await readJson<{ ok: boolean; shipment: Shipment }>(response);
+
+      if (!response.ok || !result.ok) {
+        throw new Error("Could not create shipment.");
+      }
+
+      await refreshStore();
+      return result.shipment;
+    },
+    [refreshStore]
+  );
+
+  const submitTransferRequest = useCallback(
+    async (input: TransferRequestInput) => {
+      const response = await fetch("/api/operations/transfer-request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(input)
+      });
+      const result = await readJson<{ ok: boolean; paymentRequest: PaymentRequest }>(response);
+
+      if (!response.ok || !result.ok) {
+        throw new Error("Could not submit transfer request.");
+      }
+
+      await refreshStore();
+      return result.paymentRequest;
+    },
+    [refreshStore]
+  );
+
+  const approvePaymentRequest = useCallback(
+    async (requestId: string) => {
+      const response = await fetch(`/api/operations/payment-request/${encodeURIComponent(requestId)}/approve`, {
+        method: "POST"
+      });
+
+      if (response.status === 404) {
+        return null;
+      }
+
+      const result = await readJson<{ ok: boolean; shipment: Shipment }>(response);
+      if (!response.ok || !result.ok) {
+        throw new Error("Could not approve payment request.");
+      }
+
+      await refreshStore();
+      return result.shipment;
+    },
+    [refreshStore]
+  );
+
+  const rejectPaymentRequest = useCallback(
+    async (requestId: string, reason = "Payment could not be confirmed. Please contact support.") => {
+      const response = await fetch(`/api/operations/payment-request/${encodeURIComponent(requestId)}/reject`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ reason })
+      });
+
+      if (!response.ok) {
+        throw new Error("Could not reject payment request.");
+      }
+
+      await refreshStore();
+    },
+    [refreshStore]
+  );
+
+  const updateShipmentStatus = useCallback(
+    async (ref: string, status: ShipmentStatus) => {
+      const response = await fetch(`/api/operations/shipment/${encodeURIComponent(ref)}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ status })
+      });
+
+      if (!response.ok) {
+        throw new Error("Could not update shipment status.");
+      }
+
+      await refreshStore();
+    },
+    [refreshStore]
+  );
+
+  const updateShipmentRecord = useCallback(
+    async (ref: string, updates: Partial<Shipment>) => {
+      const response = await fetch(`/api/operations/shipment/${encodeURIComponent(ref)}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(updates)
+      });
+
+      if (!response.ok) {
+        throw new Error("Could not update shipment.");
+      }
+
+      await refreshStore();
+    },
+    [refreshStore]
+  );
+
+  const updatePaymentRequest = useCallback(
+    async (requestId: string, updates: Partial<PaymentRequest>) => {
+      const response = await fetch(`/api/operations/payment-request/${encodeURIComponent(requestId)}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(updates)
+      });
+
+      if (!response.ok) {
+        throw new Error("Could not update payment request.");
+      }
+
+      await refreshStore();
+    },
+    [refreshStore]
+  );
+
+  const markCustomerUpdateRead = useCallback(
+    async (updateId: string) => {
+      const response = await fetch(`/api/operations/customer-update/${encodeURIComponent(updateId)}/read`, {
+        method: "POST"
+      });
+
+      if (!response.ok) {
+        throw new Error("Could not update customer notification.");
+      }
+
+      await refreshStore();
+    },
+    [refreshStore]
+  );
+
+  return {
+    shipments: store.shipments,
+    paymentRequests: store.paymentRequests,
+    customerUpdates: store.customerUpdates,
+    nextSequence: store.nextSequence,
+    loading,
+    refreshStore,
+    bookShipment,
+    submitTransferRequest,
+    approvePaymentRequest,
+    rejectPaymentRequest,
+    updateShipmentStatus,
+    updateShipmentRecord,
+    updatePaymentRequest,
+    markCustomerUpdateRead
+  };
+}

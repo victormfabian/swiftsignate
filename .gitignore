@@ -1,0 +1,13 @@
+.next
+.next-dev
+.next-build
+node_modules
+.env
+.env.local
+.env.production
+.env.development
+.env.test
+dev-server.log
+dev-server.err
+data/*.db
+data/*.db-*

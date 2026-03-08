@@ -1,0 +1,32 @@
+name: Deploy to Webuzo
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure SSH
+        env:
+          WEBUZO_SSH_HOST: ${{ secrets.WEBUZO_SSH_HOST }}
+          WEBUZO_SSH_PRIVATE_KEY: ${{ secrets.WEBUZO_SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf "%s" "$WEBUZO_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$WEBUZO_SSH_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy on Webuzo
+        env:
+          WEBUZO_APP_PATH: ${{ secrets.WEBUZO_APP_PATH }}
+          WEBUZO_SSH_HOST: ${{ secrets.WEBUZO_SSH_HOST }}
+          WEBUZO_SSH_PORT: ${{ secrets.WEBUZO_SSH_PORT }}
+          WEBUZO_SSH_USER: ${{ secrets.WEBUZO_SSH_USER }}
+        run: |
+          ssh -p "${WEBUZO_SSH_PORT:-22}" "${WEBUZO_SSH_USER}@${WEBUZO_SSH_HOST}" \
+            "cd '${WEBUZO_APP_PATH}' && chmod +x scripts/webuzo-deploy.sh && WEBUZO_DEPLOY_BRANCH='${GITHUB_REF_NAME}' ./scripts/webuzo-deploy.sh"

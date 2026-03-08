@@ -1,0 +1,32 @@
+{
+  "name": "swiftsignate-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "clean": "node -e \"['.next', '.next-dev', '.next-build'].forEach((dir) => require('fs').rmSync(dir, { recursive: true, force: true }))\"",
+    "dev": "node scripts/next-runner.cjs dev .next-dev",
+    "dev:reset": "npm run clean && npm run dev",
+    "build": "node scripts/next-runner.cjs build .next-build",
+    "start": "node scripts/next-runner.cjs start .next-build"
+  },
+  "dependencies": {
+    "framer-motion": "12.6.2",
+    "mysql2": "3.15.1",
+    "next": "15.2.4",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.13.14",
+    "@types/react": "19.0.12",
+    "@types/react-dom": "19.0.4",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.5.3",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.8.2"
+  },
+  "overrides": {
+    "motion-dom": "12.6.1",
+    "motion-utils": "12.5.0"
+  }
+}
