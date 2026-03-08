@@ -9,47 +9,57 @@ function isValidEmail(value: string) {
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as {
-    email?: string;
-    password?: string;
-  };
+  try {
+    const body = (await request.json()) as {
+      email?: string;
+      password?: string;
+    };
 
-  if (!isValidEmail(body.email ?? "") || !body.password?.trim()) {
-    return NextResponse.json(
-      {
-        ok: false,
-        message: "Email and password are required."
-      },
-      { status: 400 }
-    );
-  }
-
-  const user = await authenticateUser({
-    email: body.email ?? "",
-    password: body.password
-  });
-
-  if (!user) {
-    return NextResponse.json(
-      {
-        ok: false,
-        message: "The email or password is incorrect."
-      },
-      { status: 401 }
-    );
-  }
-
-  const response = NextResponse.json({
-    ok: true,
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      phone: user.phone
+    if (!isValidEmail(body.email ?? "") || !body.password?.trim()) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: "Email and password are required."
+        },
+        { status: 400 }
+      );
     }
-  });
 
-  setSessionCookie(response, await issueUserSession(user.id));
+    const user = await authenticateUser({
+      email: body.email ?? "",
+      password: body.password
+    });
 
-  return response;
+    if (!user) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: "The email or password is incorrect."
+        },
+        { status: 401 }
+      );
+    }
+
+    const response = NextResponse.json({
+      ok: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone
+      }
+    });
+
+    setSessionCookie(response, await issueUserSession(user.id));
+
+    return response;
+  } catch {
+    return NextResponse.json(
+      {
+        ok: false,
+        message: "Sign in failed. Check the database connection and try again."
+      },
+      { status: 500 }
+    );
+  }
 }

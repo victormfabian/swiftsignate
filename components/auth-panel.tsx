@@ -94,6 +94,8 @@ export function AuthPanel({ role, mode = "page", title, copy, nextPath, onSucces
 
         router.push(nextPath ?? "/dashboard/book");
         router.refresh();
+      } catch {
+        setNotice("Sign in failed. Check the deployment and database connection, then try again.");
       } finally {
         setSubmitting(false);
       }
@@ -148,6 +150,8 @@ export function AuthPanel({ role, mode = "page", title, copy, nextPath, onSucces
 
         router.push(nextPath ?? "/dashboard/book");
         router.refresh();
+      } catch {
+        setNotice("Account creation failed. Check the deployment and database connection, then try again.");
       } finally {
         setSubmitting(false);
       }
@@ -187,6 +191,8 @@ export function AuthPanel({ role, mode = "page", title, copy, nextPath, onSucces
 
         router.push(nextPath ?? "/swiftadmin");
         router.refresh();
+      } catch {
+        setNotice("Admin sign in failed. Check the deployment and database connection, then try again.");
       } finally {
         setSubmitting(false);
       }
