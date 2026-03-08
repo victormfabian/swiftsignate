@@ -19,10 +19,11 @@ export async function GET() {
 
   const store =
     session.role === "admin"
-      ? await getOperationalStore({ includePaymentRequests: true })
+      ? await getOperationalStore({ includePaymentRequests: true, includeContactRequests: true })
       : await getOperationalStore({
           customerEmail: session.user.email,
-          includePaymentRequests: false
+          includePaymentRequests: false,
+          includeContactRequests: false
         });
 
   return NextResponse.json({

@@ -9,6 +9,7 @@ import { useAuthSession } from "@/components/auth-session";
 import { LogoMark } from "@/components/logo-mark";
 import { getShipmentSteps, useShipmentStore } from "@/components/shipment-store";
 import { useSiteContentStore } from "@/components/site-content-store";
+import type { BookingRecordDetails } from "@/lib/shipment-model";
 
 type DashboardTab = "book" | "track";
 type BookingStep = 1 | 2 | 3 | 4 | 5;
@@ -992,6 +993,46 @@ export function DashboardPage({
     setBookingStep(5);
   };
 
+  const buildBookingRecordDetails = (method: "Direct transfer" | "Paystack"): BookingRecordDetails => ({
+    shipperType: bookingForm.shipperType,
+    route: {
+      fromCountry: bookingForm.fromCountry,
+      fromCity: bookingForm.fromCity,
+      toCountry: bookingForm.toCountry,
+      toCity: bookingForm.toCity,
+      shipmentDate: bookingForm.shipmentDate,
+      residential: bookingForm.residential
+    },
+    shipment: {
+      packagingType: bookingForm.packagingType,
+      higherLiability: bookingForm.higherLiability,
+      weightUnit: bookingForm.weightUnit,
+      dimensionUnit: bookingForm.dimensionUnit,
+      packages: packageEntries.map((entry) => ({ ...entry }))
+    },
+    sender: { ...senderDetails },
+    receiver: { ...receiverDetails },
+    quoteSort,
+    selectedQuote: selectedQuote
+      ? {
+          id: selectedQuote.id,
+          title: selectedQuote.title,
+          etaHeadline: selectedQuote.etaHeadline,
+          etaDetail: selectedQuote.etaDetail,
+          pickupNote: selectedQuote.pickupNote,
+          operator: selectedQuote.operator,
+          price: selectedQuote.price
+        }
+      : null,
+    payment: {
+      method,
+      note:
+        method === "Direct transfer"
+          ? `Transfer submitted for ${selectedQuote?.title ?? "selected delivery option"}`
+          : "Paystack payment confirmed"
+    }
+  });
+
   const handleTransferSubmission = () => {
     if (!selectedQuote) {
       setNotice("Select a delivery option before submitting a transfer.");
@@ -1047,7 +1088,8 @@ export function DashboardPage({
       note: `Transfer submitted for ${selectedQuote.title}`,
       paymentProofName: transferProof.name,
       paymentProofType: transferProof.type,
-      paymentProofDataUrl: transferProof.dataUrl
+      paymentProofDataUrl: transferProof.dataUrl,
+      details: buildBookingRecordDetails("Direct transfer")
     };
 
     window.setTimeout(() => {
@@ -1127,7 +1169,8 @@ export function DashboardPage({
             destination: `${bookingForm.toCity}, ${bookingForm.toCountry}`,
             eta: `${selectedQuote.etaHeadline}, ${selectedQuote.etaDetail}`,
             packageType: `${packageEntries.length} ${bookingForm.packagingType.toLowerCase()}`,
-            paymentMethod: "Paystack"
+            paymentMethod: "Paystack",
+            details: buildBookingRecordDetails("Paystack")
           });
 
           persistCustomerEmail(customerEmail);

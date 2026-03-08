@@ -1,6 +1,79 @@
 export type ShipmentStatus = "Booked" | "Picked up" | "In transit" | "Out for delivery" | "Delivered";
 export type ShipmentPaymentMethod = "Direct transfer" | "Paystack";
 export type PaymentRequestStatus = "Awaiting verification" | "Approved" | "Rejected";
+export type ShipperType = "private" | "business";
+export type WeightUnit = "kg" | "lb";
+export type DimensionUnit = "cm" | "in";
+export type QuoteSort = "fastest" | "lowest" | "premium";
+
+export type ShipmentPackage = {
+  id: string;
+  weight: string;
+  length: string;
+  width: string;
+  height: string;
+};
+
+export type ShipmentPartyDetails = {
+  name: string;
+  company: string;
+  email: string;
+  phone: string;
+  address1: string;
+  address2: string;
+  city: string;
+  postalCode: string;
+  residential: boolean;
+};
+
+export type ShipmentQuote = {
+  id: string;
+  title: string;
+  etaHeadline: string;
+  etaDetail: string;
+  pickupNote: string;
+  operator: string;
+  price: number;
+};
+
+export type BookingRecordDetails = {
+  shipperType: ShipperType | "";
+  route: {
+    fromCountry: string;
+    fromCity: string;
+    toCountry: string;
+    toCity: string;
+    shipmentDate: string;
+    residential: boolean | null;
+  };
+  shipment: {
+    packagingType: string;
+    higherLiability: boolean | null;
+    weightUnit: WeightUnit;
+    dimensionUnit: DimensionUnit;
+    packages: ShipmentPackage[];
+  };
+  sender: ShipmentPartyDetails;
+  receiver: ShipmentPartyDetails;
+  quoteSort: QuoteSort;
+  selectedQuote: ShipmentQuote | null;
+  payment: {
+    method: ShipmentPaymentMethod;
+    note?: string;
+  };
+};
+
+export type ContactRequest = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  message: string;
+  createdAt: string;
+  read: boolean;
+};
+
+export type ContactRequestInput = Pick<ContactRequest, "name" | "email" | "phone" | "message">;
 
 export type Shipment = {
   ref: string;
@@ -16,6 +89,7 @@ export type Shipment = {
   paymentMethod: ShipmentPaymentMethod;
   lastUpdate: string;
   createdAt: string;
+  details?: BookingRecordDetails | null;
 };
 
 export type PaymentRequest = {
@@ -38,6 +112,7 @@ export type PaymentRequest = {
   paymentProofDataUrl: string;
   shipmentRef?: string;
   airWaybill?: string;
+  details?: BookingRecordDetails | null;
 };
 
 export type CustomerUpdate = {
@@ -53,6 +128,7 @@ export type ShipmentStoreState = {
   shipments: Shipment[];
   paymentRequests: PaymentRequest[];
   customerUpdates: CustomerUpdate[];
+  contactRequests: ContactRequest[];
   nextSequence: number;
 };
 
@@ -65,6 +141,7 @@ export type BookingInput = {
   eta: string;
   packageType: string;
   paymentMethod: ShipmentPaymentMethod;
+  details?: BookingRecordDetails | null;
 };
 
 export type TransferRequestInput = BookingInput & {

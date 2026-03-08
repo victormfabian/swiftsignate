@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { LogoMark } from "@/components/logo-mark";
 import { useSiteContentStore } from "@/components/site-content-store";
@@ -38,6 +38,8 @@ function buildContactMessage(form: ContactForm) {
 export function Navigation() {
   const [contactOpen, setContactOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState("");
   const [form, setForm] = useState<ContactForm>(initialFormState);
   const { content } = useSiteContentStore();
 
@@ -65,6 +67,38 @@ export function Navigation() {
   const encodedMessage = buildContactMessage(form);
   const whatsappHref = `https://wa.me/?text=${encodedMessage}`;
   const emailHref = `mailto:${content.navigation.contactEmail}?subject=Logistics%20Inquiry&body=${encodedMessage}`;
+
+  const handleContactSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setSubmitMessage("");
+
+    try {
+      const response = await fetch("/api/contact-request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(form)
+      });
+
+      const result = (await response.json()) as { ok?: boolean; message?: string };
+
+      if (!response.ok || !result.ok) {
+        setSubmitMessage(result.message ?? "We could not save your request right now.");
+        setSubmitting(false);
+        return;
+      }
+
+      setSubmitted(true);
+      setSubmitMessage("Request received. Our team will follow up using your contact details.");
+      setForm(initialFormState);
+    } catch {
+      setSubmitMessage("We could not save your request right now.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <>
@@ -110,6 +144,7 @@ export function Navigation() {
               type="button"
               onClick={() => {
                 setSubmitted(false);
+                setSubmitMessage("");
                 setContactOpen(true);
               }}
                     className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-medium text-neutral-950 transition-colors hover:bg-orange-100"
@@ -165,10 +200,7 @@ export function Navigation() {
 
                 <form
                   className="mt-5 space-y-3"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    setSubmitted(true);
-                  }}
+                  onSubmit={handleContactSubmit}
                 >
                   <div className="grid gap-3 md:grid-cols-2">
                     <label className="block">
@@ -223,14 +255,15 @@ export function Navigation() {
                   <div className="flex flex-col gap-2 border-t border-black/8 pt-4 sm:flex-row sm:items-center sm:justify-between">
                     <button
                       type="submit"
-                    className="inline-flex min-h-[46px] items-center justify-center rounded-full bg-neutral-950 px-5 text-sm font-medium text-white transition-colors hover:bg-neutral-800"
-                  >
-                      {content.navigation.contactModalSubmitLabel}
+                      disabled={submitting}
+                      className="inline-flex min-h-[46px] items-center justify-center rounded-full bg-neutral-950 px-5 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {submitting ? "Sending..." : content.navigation.contactModalSubmitLabel}
                     </button>
 
-                    {submitted && (
-                      <p className="text-sm text-emerald-700">
-                        Request received. Our team will follow up using your contact details.
+                    {submitMessage && (
+                      <p className={`text-sm ${submitted ? "text-emerald-700" : "text-red-600"}`}>
+                        {submitMessage}
                       </p>
                     )}
                   </div>

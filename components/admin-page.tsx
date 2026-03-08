@@ -7,6 +7,7 @@ import { ConsoleShell } from "@/components/console-shell";
 import {
   previewAirWaybill,
   previewTrackingNumber,
+  type ContactRequest,
   type PaymentRequest,
   type Shipment,
   type ShipmentStatus,
@@ -70,11 +71,13 @@ export function AdminPage() {
     shipments,
     paymentRequests,
     customerUpdates,
+    contactRequests,
     nextSequence,
     approvePaymentRequest,
     rejectPaymentRequest,
     updateShipmentRecord,
-    updatePaymentRequest
+    updatePaymentRequest,
+    updateContactRequest
   } = useShipmentStore();
   const { currentAdmin, isAdminAuthenticated, loading: authLoading, signOut } = useAuthSession();
   const { content, updateContent, resetContent } = useSiteContentStore();
@@ -100,6 +103,9 @@ export function AdminPage() {
   const [requestMessage, setRequestMessage] = useState("");
   const [contentDraft, setContentDraft] = useState(JSON.stringify(content, null, 2));
   const [contentMessage, setContentMessage] = useState("");
+  const [selectedContactRequestId, setSelectedContactRequestId] = useState("");
+  const [contactRequestDraft, setContactRequestDraft] = useState<ContactRequest | null>(null);
+  const [contactRequestMessage, setContactRequestMessage] = useState("");
 
   useEffect(() => {
     if (!selectedShipmentRef && shipments.length > 0) {
@@ -115,6 +121,12 @@ export function AdminPage() {
   }, [requestRecords, selectedRequestId]);
 
   useEffect(() => {
+    if (!selectedContactRequestId && contactRequests.length > 0) {
+      setSelectedContactRequestId(contactRequests[0].id);
+    }
+  }, [contactRequests, selectedContactRequestId]);
+
+  useEffect(() => {
     const nextShipment = shipments.find((shipment) => shipment.ref === selectedShipmentRef) ?? null;
     setShipmentDraft(nextShipment ? { ...nextShipment } : null);
   }, [selectedShipmentRef, shipments]);
@@ -125,13 +137,19 @@ export function AdminPage() {
   }, [selectedRequestId, requestRecords]);
 
   useEffect(() => {
+    const nextContactRequest = contactRequests.find((request) => request.id === selectedContactRequestId) ?? null;
+    setContactRequestDraft(nextContactRequest ? { ...nextContactRequest } : null);
+  }, [contactRequests, selectedContactRequestId]);
+
+  useEffect(() => {
     setContentDraft(JSON.stringify(content, null, 2));
   }, [content]);
 
   const totals = {
     shipments: shipments.length,
     active: shipments.filter((shipment) => shipment.status !== "Delivered").length,
-    updates: customerUpdates.filter((update) => !update.read).length
+    updates: customerUpdates.filter((update) => !update.read).length,
+    contactRequests: contactRequests.filter((request) => !request.read).length
   };
 
   const handleShipmentField = <K extends keyof Shipment>(field: K, value: Shipment[K]) => {
@@ -140,6 +158,10 @@ export function AdminPage() {
 
   const handleRequestField = <K extends keyof PaymentRequest>(field: K, value: PaymentRequest[K]) => {
     setRequestDraft((current) => (current ? { ...current, [field]: value } : current));
+  };
+
+  const handleContactRequestField = <K extends keyof ContactRequest>(field: K, value: ContactRequest[K]) => {
+    setContactRequestDraft((current) => (current ? { ...current, [field]: value } : current));
   };
 
   const handleSaveShipment = async () => {
@@ -246,6 +268,19 @@ export function AdminPage() {
     }
   };
 
+  const handleSaveContactRequest = async () => {
+    if (!contactRequestDraft) {
+      return;
+    }
+
+    try {
+      await updateContactRequest(contactRequestDraft.id, contactRequestDraft);
+      setContactRequestMessage(`Contact request ${contactRequestDraft.id} has been updated.`);
+    } catch {
+      setContactRequestMessage("Could not save the contact request.");
+    }
+  };
+
   if (authLoading) {
     return (
       <main className="min-h-screen bg-white px-4 py-8">
@@ -279,7 +314,7 @@ export function AdminPage() {
           </button>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-4">
+        <div className="grid gap-4 xl:grid-cols-5">
           <MetricCard
             label="Pending transfers"
             value={pendingTransfers.length.toString()}
@@ -296,6 +331,12 @@ export function AdminPage() {
             value={totals.updates.toString()}
             detail="Unread customer notifications currently stored in the shared shipment store."
             delay={0.1}
+          />
+          <MetricCard
+            label="Contact requests"
+            value={totals.contactRequests.toString()}
+            detail="Unread website contact submissions stored from the landing-page modal."
+            delay={0.12}
           />
           <MetricCard
             label="Next IDs"
@@ -546,6 +587,136 @@ export function AdminPage() {
                 <div className="mt-5 rounded-[20px] border border-orange-200 bg-orange-50 px-4 py-3 text-sm leading-6 text-neutral-700">
                   {requestMessage}
                 </div>
+              )}
+            </div>
+          </div>
+        </motion.section>
+
+        <motion.section
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.04 }}
+          className={panelClassName}
+        >
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Contact inbox</div>
+              <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Website contact form submissions</h2>
+            </div>
+            <div className="text-sm text-neutral-500">Every submitted contact form is stored in MySQL for follow-up.</div>
+          </div>
+
+          <div className="mt-6 grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+            <div className="space-y-4">
+              {contactRequests.length === 0 ? (
+                <div className="rounded-[24px] border border-black/8 bg-white p-5 text-sm leading-6 text-neutral-600">
+                  No website contact requests have been submitted yet.
+                </div>
+              ) : (
+                contactRequests.map((request) => {
+                  const selected = request.id === selectedContactRequestId;
+
+                  return (
+                    <button
+                      key={request.id}
+                      type="button"
+                      onClick={() => setSelectedContactRequestId(request.id)}
+                      className={[
+                        "w-full rounded-[24px] border p-5 text-left shadow-[0_10px_18px_rgba(140,110,78,0.05)] transition-colors",
+                        selected ? "border-orange-300 bg-orange-50/40" : "border-black/8 bg-white hover:border-orange-200"
+                      ].join(" ")}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-neutral-950">{request.name}</div>
+                          <div className="mt-1 text-sm text-neutral-600">{request.email}</div>
+                        </div>
+                        <span
+                          className={[
+                            "rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em]",
+                            request.read
+                              ? "border-neutral-200 bg-neutral-100 text-neutral-600"
+                              : "border-orange-200 bg-orange-50 text-ember"
+                          ].join(" ")}
+                        >
+                          {request.read ? "Read" : "Unread"}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-sm text-neutral-700">{request.phone}</div>
+                      <div className="mt-2 line-clamp-2 text-sm leading-6 text-neutral-600">{request.message}</div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="rounded-[24px] border border-black/8 bg-white p-5 shadow-[0_10px_18px_rgba(140,110,78,0.05)]">
+              {contactRequestDraft ? (
+                <>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Selected contact request</div>
+                      <h3 className="mt-3 text-2xl font-semibold text-neutral-950">{contactRequestDraft.name}</h3>
+                    </div>
+                    <label className="inline-flex items-center gap-2 text-sm text-neutral-700">
+                      <input
+                        type="checkbox"
+                        checked={contactRequestDraft.read}
+                        onChange={(event) => handleContactRequestField("read", event.target.checked)}
+                      />
+                      Mark as read
+                    </label>
+                  </div>
+
+                  <div className="mt-6 grid gap-4 md:grid-cols-2">
+                    <label>
+                      <span className={labelClassName}>Name</span>
+                      <input
+                        value={contactRequestDraft.name}
+                        onChange={(event) => handleContactRequestField("name", event.target.value)}
+                        className={fieldClassName}
+                      />
+                    </label>
+                    <label>
+                      <span className={labelClassName}>Phone</span>
+                      <input
+                        value={contactRequestDraft.phone}
+                        onChange={(event) => handleContactRequestField("phone", event.target.value)}
+                        className={fieldClassName}
+                      />
+                    </label>
+                    <label className="md:col-span-2">
+                      <span className={labelClassName}>Email</span>
+                      <input
+                        value={contactRequestDraft.email}
+                        onChange={(event) => handleContactRequestField("email", event.target.value)}
+                        className={fieldClassName}
+                      />
+                    </label>
+                    <label className="md:col-span-2">
+                      <span className={labelClassName}>Message</span>
+                      <textarea
+                        value={contactRequestDraft.message}
+                        onChange={(event) => handleContactRequestField("message", event.target.value)}
+                        className={areaClassName}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveContactRequest()}
+                      className="inline-flex min-h-[44px] items-center justify-center rounded-[14px] bg-neutral-950 px-5 text-sm font-medium text-white"
+                    >
+                      Save contact request
+                    </button>
+                  </div>
+
+                  {contactRequestMessage && <div className="mt-4 text-sm text-neutral-600">{contactRequestMessage}</div>}
+                </>
+              ) : (
+                <div className="text-sm leading-6 text-neutral-600">Select a contact request to review it.</div>
               )}
             </div>
           </div>

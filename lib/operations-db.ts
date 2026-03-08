@@ -6,7 +6,10 @@ import { dirname, join } from "node:path";
 import { getMySqlPool, isMySqlConfigured } from "@/lib/mysql";
 import {
   type BookingInput,
+  type BookingRecordDetails,
   buildLastUpdate,
+  type ContactRequest,
+  type ContactRequestInput,
   type CustomerUpdate,
   formatAirWaybill,
   formatCreatedAt,
@@ -31,14 +34,66 @@ const require = createRequire(import.meta.url);
 let sqliteDatabase: SqliteDatabase | null = null;
 let mySqlReady: Promise<void> | null = null;
 
-type PaymentRequestRow = Omit<PaymentRequest, "shipmentRef" | "airWaybill"> & {
+type PaymentRequestRow = Omit<PaymentRequest, "shipmentRef" | "airWaybill" | "details"> & {
   shipmentRef: string | null;
   airWaybill: string | null;
+  details: string | null;
 };
 
 type CustomerUpdateRow = Omit<CustomerUpdate, "read"> & {
   read: number;
 };
+
+type ShipmentRow = Omit<Shipment, "details"> & {
+  details: string | null;
+};
+
+type ContactRequestRow = Omit<ContactRequest, "read"> & {
+  read: number;
+};
+
+function serializeDetails(details: BookingRecordDetails | null | undefined) {
+  return details ? JSON.stringify(details) : null;
+}
+
+function parseDetails(details: string | null | undefined) {
+  if (!details) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(details) as BookingRecordDetails;
+  } catch {
+    return null;
+  }
+}
+
+function mapShipment(row: ShipmentRow): Shipment {
+  return {
+    ...row,
+    details: parseDetails(row.details)
+  };
+}
+
+function ensureSqliteColumn(db: SqliteDatabase, table: string, column: string, definition: string) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+
+  if (!columns.some((current) => current.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+async function ensureMySqlColumn(table: string, column: string, definition: string) {
+  const pool = getMySqlPool();
+  const [rows] = (await pool.query(
+    "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1",
+    [table, column]
+  )) as unknown as [Array<{ COLUMN_NAME: string }>];
+
+  if (rows.length === 0) {
+    await pool.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
+  }
+}
 
 function getSqliteDatabase() {
   if (sqliteDatabase) {
@@ -62,7 +117,8 @@ function getSqliteDatabase() {
       packageType TEXT NOT NULL,
       paymentMethod TEXT NOT NULL,
       lastUpdate TEXT NOT NULL,
-      createdAt TEXT NOT NULL
+      createdAt TEXT NOT NULL,
+      details TEXT
     );
 
     CREATE TABLE IF NOT EXISTS payment_requests (
@@ -84,7 +140,8 @@ function getSqliteDatabase() {
       paymentProofType TEXT NOT NULL,
       paymentProofDataUrl TEXT NOT NULL,
       shipmentRef TEXT,
-      airWaybill TEXT
+      airWaybill TEXT,
+      details TEXT
     );
 
     CREATE TABLE IF NOT EXISTS customer_updates (
@@ -101,7 +158,20 @@ function getSqliteDatabase() {
       payload TEXT NOT NULL,
       updatedAt TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS contact_requests (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      message TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      read INTEGER NOT NULL DEFAULT 0
+    );
   `);
+
+  ensureSqliteColumn(sqliteDatabase, "shipments", "details", "TEXT");
+  ensureSqliteColumn(sqliteDatabase, "payment_requests", "details", "TEXT");
 
   seedSqliteDatabase(sqliteDatabase);
 
@@ -130,7 +200,8 @@ async function ensureMySqlSchema() {
           packageType VARCHAR(191) NOT NULL,
           paymentMethod VARCHAR(32) NOT NULL,
           lastUpdate TEXT NOT NULL,
-          createdAt VARCHAR(64) NOT NULL
+          createdAt VARCHAR(64) NOT NULL,
+          details LONGTEXT NULL
         )
       `);
       await pool.query(`
@@ -153,7 +224,8 @@ async function ensureMySqlSchema() {
           paymentProofType VARCHAR(128) NOT NULL,
           paymentProofDataUrl LONGTEXT NOT NULL,
           shipmentRef VARCHAR(64) NULL,
-          airWaybill VARCHAR(64) NULL
+          airWaybill VARCHAR(64) NULL,
+          details LONGTEXT NULL
         )
       `);
       await pool.query(`
@@ -173,6 +245,19 @@ async function ensureMySqlSchema() {
           updatedAt VARCHAR(64) NOT NULL
         )
       `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS contact_requests (
+          id VARCHAR(64) PRIMARY KEY,
+          name VARCHAR(191) NOT NULL,
+          email VARCHAR(191) NOT NULL,
+          phone VARCHAR(64) NOT NULL,
+          message TEXT NOT NULL,
+          createdAt VARCHAR(64) NOT NULL,
+          \`read\` TINYINT(1) NOT NULL DEFAULT 0
+        )
+      `);
+      await ensureMySqlColumn("shipments", "details", "LONGTEXT NULL");
+      await ensureMySqlColumn("payment_requests", "details", "LONGTEXT NULL");
       await seedMySqlDatabase();
     })();
   }
@@ -270,7 +355,8 @@ function mapPaymentRequest(row: PaymentRequestRow): PaymentRequest {
     ...row,
     amount: Number(row.amount),
     shipmentRef: row.shipmentRef ?? undefined,
-    airWaybill: row.airWaybill ?? undefined
+    airWaybill: row.airWaybill ?? undefined,
+    details: parseDetails(row.details)
   };
 }
 
@@ -281,16 +367,23 @@ function mapCustomerUpdate(row: CustomerUpdateRow): CustomerUpdate {
   };
 }
 
+function mapContactRequest(row: ContactRequestRow): ContactRequest {
+  return {
+    ...row,
+    read: Boolean(row.read)
+  };
+}
+
 async function listShipments() {
   if (isMySqlConfigured()) {
     await ensureMySqlSchema();
     const pool = getMySqlPool();
-    const [rows] = (await pool.query("SELECT * FROM shipments ORDER BY ref DESC")) as unknown as [Shipment[]];
-    return rows;
+    const [rows] = (await pool.query("SELECT * FROM shipments ORDER BY ref DESC")) as unknown as [ShipmentRow[]];
+    return rows.map(mapShipment);
   }
 
   const db = getSqliteDatabase();
-  return db.prepare("SELECT * FROM shipments ORDER BY ref DESC").all() as Shipment[];
+  return (db.prepare("SELECT * FROM shipments ORDER BY ref DESC").all() as ShipmentRow[]).map(mapShipment);
 }
 
 async function listPaymentRequests() {
@@ -317,6 +410,22 @@ async function listCustomerUpdates() {
   return (db.prepare("SELECT * FROM customer_updates ORDER BY id DESC").all() as CustomerUpdateRow[]).map(mapCustomerUpdate);
 }
 
+async function listContactRequests() {
+  if (isMySqlConfigured()) {
+    await ensureMySqlSchema();
+    const pool = getMySqlPool();
+    const [rows] = (await pool.query("SELECT * FROM contact_requests ORDER BY createdAt DESC, id DESC")) as unknown as [
+      ContactRequestRow[]
+    ];
+    return rows.map(mapContactRequest);
+  }
+
+  const db = getSqliteDatabase();
+  return (db.prepare("SELECT * FROM contact_requests ORDER BY createdAt DESC, id DESC").all() as ContactRequestRow[]).map(
+    mapContactRequest
+  );
+}
+
 async function nextShipmentSequence() {
   const shipments = await listShipments();
   return Math.max(...shipments.map((shipment) => Number(shipment.ref.split("-").pop() ?? 100000)), 100000) + 1;
@@ -330,6 +439,11 @@ async function nextPaymentRequestSequence() {
 async function nextCustomerUpdateSequence() {
   const updates = await listCustomerUpdates();
   return Math.max(...updates.map((update) => Number(update.id.split("-").pop() ?? 0)), 0) + 1;
+}
+
+async function nextContactRequestSequence() {
+  const requests = await listContactRequests();
+  return Math.max(...requests.map((request) => Number(request.id.split("-").pop() ?? 0)), 0) + 1;
 }
 
 async function insertCustomerUpdate(input: Pick<CustomerUpdate, "customerEmail" | "title" | "message">) {
@@ -365,6 +479,41 @@ async function insertCustomerUpdate(input: Pick<CustomerUpdate, "customerEmail" 
   return update;
 }
 
+async function insertContactRequest(input: ContactRequestInput) {
+  const request: ContactRequest = {
+    id: `contact-${await nextContactRequestSequence()}`,
+    name: input.name.trim(),
+    email: input.email.trim().toLowerCase(),
+    phone: input.phone.trim(),
+    message: input.message.trim(),
+    createdAt: new Date().toISOString(),
+    read: false
+  };
+
+  if (isMySqlConfigured()) {
+    await ensureMySqlSchema();
+    const pool = getMySqlPool();
+    await pool.query(
+      "INSERT INTO contact_requests (id, name, email, phone, message, createdAt, `read`) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [request.id, request.name, request.email, request.phone, request.message, request.createdAt, 0]
+    );
+    return request;
+  }
+
+  const db = getSqliteDatabase();
+  db.prepare("INSERT INTO contact_requests (id, name, email, phone, message, createdAt, read) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
+    request.id,
+    request.name,
+    request.email,
+    request.phone,
+    request.message,
+    request.createdAt,
+    0
+  );
+
+  return request;
+}
+
 async function insertShipment(input: BookingInput) {
   const sequence = await nextShipmentSequence();
   const shipment: Shipment = {
@@ -380,7 +529,8 @@ async function insertShipment(input: BookingInput) {
     packageType: input.packageType,
     paymentMethod: input.paymentMethod,
     lastUpdate: buildLastUpdate("Booked", input),
-    createdAt: formatCreatedAt()
+    createdAt: formatCreatedAt(),
+    details: input.details ?? null
   };
 
   if (isMySqlConfigured()) {
@@ -389,8 +539,8 @@ async function insertShipment(input: BookingInput) {
     await pool.query(
       `INSERT INTO shipments (
         ref, airWaybill, customer, customerEmail, customerPhone, origin, destination, eta,
-        status, packageType, paymentMethod, lastUpdate, createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        status, packageType, paymentMethod, lastUpdate, createdAt, details
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         shipment.ref,
         shipment.airWaybill,
@@ -404,7 +554,8 @@ async function insertShipment(input: BookingInput) {
         shipment.packageType,
         shipment.paymentMethod,
         shipment.lastUpdate,
-        shipment.createdAt
+        shipment.createdAt,
+        serializeDetails(shipment.details)
       ]
     );
     return shipment;
@@ -414,8 +565,8 @@ async function insertShipment(input: BookingInput) {
   db.prepare(`
     INSERT INTO shipments (
       ref, airWaybill, customer, customerEmail, customerPhone, origin, destination, eta,
-      status, packageType, paymentMethod, lastUpdate, createdAt
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      status, packageType, paymentMethod, lastUpdate, createdAt, details
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     shipment.ref,
     shipment.airWaybill,
@@ -429,16 +580,25 @@ async function insertShipment(input: BookingInput) {
     shipment.packageType,
     shipment.paymentMethod,
     shipment.lastUpdate,
-    shipment.createdAt
+    shipment.createdAt,
+    serializeDetails(shipment.details)
   );
 
   return shipment;
 }
 
-export async function getOperationalStore(options?: { customerEmail?: string; includePaymentRequests?: boolean }): Promise<ShipmentStoreState> {
-  const shipments = await listShipments();
+export async function getOperationalStore(options?: {
+  customerEmail?: string;
+  includePaymentRequests?: boolean;
+  includeContactRequests?: boolean;
+}): Promise<ShipmentStoreState> {
+  const allShipments = await listShipments();
+  const shipments = options?.customerEmail
+    ? allShipments.filter((shipment) => shipment.customerEmail.toLowerCase() === options.customerEmail?.toLowerCase())
+    : allShipments;
   const paymentRequests = options?.includePaymentRequests ? await listPaymentRequests() : [];
   const allUpdates = await listCustomerUpdates();
+  const contactRequests = options?.includeContactRequests ? await listContactRequests() : [];
 
   return {
     shipments,
@@ -446,6 +606,7 @@ export async function getOperationalStore(options?: { customerEmail?: string; in
     customerUpdates: options?.customerEmail
       ? allUpdates.filter((update) => update.customerEmail.toLowerCase() === options.customerEmail?.toLowerCase())
       : allUpdates,
+    contactRequests,
     nextSequence: await nextShipmentSequence()
   };
 }
@@ -480,7 +641,8 @@ export async function submitTransferRequestRecord(input: TransferRequestInput) {
     note: input.note ?? "",
     paymentProofName: input.paymentProofName,
     paymentProofType: input.paymentProofType,
-    paymentProofDataUrl: input.paymentProofDataUrl
+    paymentProofDataUrl: input.paymentProofDataUrl,
+    details: input.details ?? null
   };
 
   if (isMySqlConfigured()) {
@@ -490,8 +652,8 @@ export async function submitTransferRequestRecord(input: TransferRequestInput) {
       `INSERT INTO payment_requests (
         id, customer, customerEmail, customerPhone, origin, destination, eta, packageType,
         paymentMethod, serviceTitle, amount, status, createdAt, note,
-        paymentProofName, paymentProofType, paymentProofDataUrl, shipmentRef, airWaybill
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        paymentProofName, paymentProofType, paymentProofDataUrl, shipmentRef, airWaybill, details
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         request.id,
         request.customer,
@@ -511,7 +673,8 @@ export async function submitTransferRequestRecord(input: TransferRequestInput) {
         request.paymentProofType,
         request.paymentProofDataUrl,
         null,
-        null
+        null,
+        serializeDetails(request.details)
       ]
     );
     return request;
@@ -522,8 +685,8 @@ export async function submitTransferRequestRecord(input: TransferRequestInput) {
     INSERT INTO payment_requests (
       id, customer, customerEmail, customerPhone, origin, destination, eta, packageType,
       paymentMethod, serviceTitle, amount, status, createdAt, note,
-      paymentProofName, paymentProofType, paymentProofDataUrl, shipmentRef, airWaybill
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      paymentProofName, paymentProofType, paymentProofDataUrl, shipmentRef, airWaybill, details
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     request.id,
     request.customer,
@@ -543,7 +706,8 @@ export async function submitTransferRequestRecord(input: TransferRequestInput) {
     request.paymentProofType,
     request.paymentProofDataUrl,
     null,
-    null
+    null,
+    serializeDetails(request.details)
   );
 
   return request;
@@ -565,7 +729,8 @@ export async function approvePaymentRequestRecord(requestId: string) {
     destination: request.destination,
     eta: request.eta,
     packageType: request.packageType,
-    paymentMethod: "Direct transfer"
+    paymentMethod: "Direct transfer",
+    details: request.details ?? null
   });
 
   if (isMySqlConfigured()) {
@@ -645,7 +810,7 @@ export async function updatePaymentRequestRecord(requestId: string, updates: Par
       `UPDATE payment_requests
        SET customer = ?, customerEmail = ?, customerPhone = ?, origin = ?, destination = ?, eta = ?,
            packageType = ?, paymentMethod = ?, serviceTitle = ?, amount = ?, status = ?, createdAt = ?,
-           note = ?, paymentProofName = ?, paymentProofType = ?, paymentProofDataUrl = ?, shipmentRef = ?, airWaybill = ?
+           note = ?, paymentProofName = ?, paymentProofType = ?, paymentProofDataUrl = ?, shipmentRef = ?, airWaybill = ?, details = ?
        WHERE id = ?`,
       [
         next.customer,
@@ -666,6 +831,7 @@ export async function updatePaymentRequestRecord(requestId: string, updates: Par
         next.paymentProofDataUrl,
         next.shipmentRef ?? null,
         next.airWaybill ?? null,
+        serializeDetails(next.details),
         requestId
       ]
     );
@@ -675,7 +841,7 @@ export async function updatePaymentRequestRecord(requestId: string, updates: Par
       UPDATE payment_requests
       SET customer = ?, customerEmail = ?, customerPhone = ?, origin = ?, destination = ?, eta = ?,
           packageType = ?, paymentMethod = ?, serviceTitle = ?, amount = ?, status = ?, createdAt = ?,
-          note = ?, paymentProofName = ?, paymentProofType = ?, paymentProofDataUrl = ?, shipmentRef = ?, airWaybill = ?
+          note = ?, paymentProofName = ?, paymentProofType = ?, paymentProofDataUrl = ?, shipmentRef = ?, airWaybill = ?, details = ?
       WHERE id = ?
     `).run(
       next.customer,
@@ -696,6 +862,7 @@ export async function updatePaymentRequestRecord(requestId: string, updates: Par
       next.paymentProofDataUrl,
       next.shipmentRef ?? null,
       next.airWaybill ?? null,
+      serializeDetails(next.details),
       requestId
     );
   }
@@ -727,7 +894,7 @@ export async function updateShipmentRecordByRef(ref: string, updates: Partial<Sh
     await pool.query(
       `UPDATE shipments
        SET ref = ?, airWaybill = ?, customer = ?, customerEmail = ?, customerPhone = ?, origin = ?, destination = ?,
-           eta = ?, status = ?, packageType = ?, paymentMethod = ?, lastUpdate = ?, createdAt = ?
+           eta = ?, status = ?, packageType = ?, paymentMethod = ?, lastUpdate = ?, createdAt = ?, details = ?
        WHERE ref = ?`,
       [
         next.ref,
@@ -743,6 +910,7 @@ export async function updateShipmentRecordByRef(ref: string, updates: Partial<Sh
         next.paymentMethod,
         next.lastUpdate,
         next.createdAt,
+        serializeDetails(next.details),
         ref
       ]
     );
@@ -755,7 +923,7 @@ export async function updateShipmentRecordByRef(ref: string, updates: Partial<Sh
     db.prepare(`
       UPDATE shipments
       SET ref = ?, airWaybill = ?, customer = ?, customerEmail = ?, customerPhone = ?, origin = ?, destination = ?,
-          eta = ?, status = ?, packageType = ?, paymentMethod = ?, lastUpdate = ?, createdAt = ?
+          eta = ?, status = ?, packageType = ?, paymentMethod = ?, lastUpdate = ?, createdAt = ?, details = ?
       WHERE ref = ?
     `).run(
       next.ref,
@@ -771,6 +939,7 @@ export async function updateShipmentRecordByRef(ref: string, updates: Partial<Sh
       next.paymentMethod,
       next.lastUpdate,
       next.createdAt,
+      serializeDetails(next.details),
       ref
     );
 
@@ -881,6 +1050,48 @@ export async function resetSiteContentRecord() {
   );
 
   return defaultSiteContent;
+}
+
+export async function submitContactRequestRecord(input: ContactRequestInput) {
+  return insertContactRequest(input);
+}
+
+export async function updateContactRequestRecord(requestId: string, updates: Partial<ContactRequest>) {
+  const requests = await listContactRequests();
+  const current = requests.find((request) => request.id === requestId);
+
+  if (!current) {
+    return null;
+  }
+
+  const next: ContactRequest = {
+    ...current,
+    ...updates,
+    email: (updates.email ?? current.email).trim().toLowerCase()
+  };
+
+  if (isMySqlConfigured()) {
+    await ensureMySqlSchema();
+    const pool = getMySqlPool();
+    await pool.query(
+      "UPDATE contact_requests SET name = ?, email = ?, phone = ?, message = ?, createdAt = ?, `read` = ? WHERE id = ?",
+      [next.name, next.email, next.phone, next.message, next.createdAt, next.read ? 1 : 0, requestId]
+    );
+    return next;
+  }
+
+  const db = getSqliteDatabase();
+  db.prepare("UPDATE contact_requests SET name = ?, email = ?, phone = ?, message = ?, createdAt = ?, read = ? WHERE id = ?").run(
+    next.name,
+    next.email,
+    next.phone,
+    next.message,
+    next.createdAt,
+    next.read ? 1 : 0,
+    requestId
+  );
+
+  return next;
 }
 
 export async function getCurrentSiteContentPreview() {

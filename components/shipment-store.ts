@@ -6,6 +6,8 @@ import {
   previewAirWaybill,
   previewTrackingNumber,
   type BookingInput,
+  type ContactRequest,
+  type ContactRequestInput,
   type CustomerUpdate,
   type PaymentRequest,
   type Shipment,
@@ -18,6 +20,7 @@ const emptyStore: ShipmentStoreState = {
   shipments: [],
   paymentRequests: [],
   customerUpdates: [],
+  contactRequests: [],
   nextSequence: 100001
 };
 
@@ -36,6 +39,8 @@ export {
 };
 export type {
   BookingInput,
+  ContactRequest,
+  ContactRequestInput,
   CustomerUpdate,
   PaymentRequest,
   Shipment,
@@ -66,6 +71,7 @@ export function useShipmentStore() {
         shipments: result.shipments ?? [],
         paymentRequests: result.paymentRequests ?? [],
         customerUpdates: result.customerUpdates ?? [],
+        contactRequests: result.contactRequests ?? [],
         nextSequence: result.nextSequence ?? 100001
       });
     } catch {
@@ -120,6 +126,23 @@ export function useShipmentStore() {
     },
     [refreshStore]
   );
+
+  const submitContactRequest = useCallback(async (input: ContactRequestInput) => {
+    const response = await fetch("/api/contact-request", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(input)
+    });
+    const result = await readJson<{ ok: boolean; contactRequest: ContactRequest }>(response);
+
+    if (!response.ok || !result.ok) {
+      throw new Error("Could not submit contact request.");
+    }
+
+    return result.contactRequest;
+  }, []);
 
   const approvePaymentRequest = useCallback(
     async (requestId: string) => {
@@ -218,6 +241,25 @@ export function useShipmentStore() {
     [refreshStore]
   );
 
+  const updateContactRequest = useCallback(
+    async (requestId: string, updates: Partial<ContactRequest>) => {
+      const response = await fetch(`/api/operations/contact-request/${encodeURIComponent(requestId)}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(updates)
+      });
+
+      if (!response.ok) {
+        throw new Error("Could not update contact request.");
+      }
+
+      await refreshStore();
+    },
+    [refreshStore]
+  );
+
   const markCustomerUpdateRead = useCallback(
     async (updateId: string) => {
       const response = await fetch(`/api/operations/customer-update/${encodeURIComponent(updateId)}/read`, {
@@ -237,16 +279,19 @@ export function useShipmentStore() {
     shipments: store.shipments,
     paymentRequests: store.paymentRequests,
     customerUpdates: store.customerUpdates,
+    contactRequests: store.contactRequests,
     nextSequence: store.nextSequence,
     loading,
     refreshStore,
     bookShipment,
     submitTransferRequest,
+    submitContactRequest,
     approvePaymentRequest,
     rejectPaymentRequest,
     updateShipmentStatus,
     updateShipmentRecord,
     updatePaymentRequest,
+    updateContactRequest,
     markCustomerUpdateRead
   };
 }
