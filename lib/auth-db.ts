@@ -172,15 +172,20 @@ function seedDefaultAdminSqlite(db: SqliteDatabase) {
 
 async function seedDefaultAdminPostgres() {
   const pool = getPostgresPool();
-  const existingAdmin = await pool.query<{ id: string }>("SELECT id FROM admins WHERE email = $1 LIMIT 1", [
+  const existingAdmin = await pool.query<{ id: string }>("SELECT id FROM admins WHERE LOWER(TRIM(email)) = $1 ORDER BY created_at ASC", [
     DEFAULT_ADMIN_EMAIL.toLowerCase()
   ]);
 
   if (existingAdmin.rows.length > 0) {
-    await pool.query("UPDATE admins SET name = $1, password_hash = $2 WHERE email = $3", [
+    if (existingAdmin.rows.length > 1) {
+      await pool.query("DELETE FROM admins WHERE id = ANY($1::text[])", [existingAdmin.rows.slice(1).map((admin) => admin.id)]);
+    }
+
+    await pool.query("UPDATE admins SET name = $1, email = $2, password_hash = $3 WHERE id = $4", [
       "Swift Signate Admin",
+      DEFAULT_ADMIN_EMAIL.toLowerCase(),
       hashPassword(DEFAULT_ADMIN_PASSWORD),
-      DEFAULT_ADMIN_EMAIL.toLowerCase()
+      existingAdmin.rows[0].id
     ]);
     return;
   }
@@ -322,7 +327,10 @@ export async function authenticateAdmin(input: { email: string; password: string
   if (isSupabaseConfigured()) {
     await ensurePostgresSchema();
     const pool = getPostgresPool();
-    const result = await pool.query<DatabaseAdmin>("SELECT * FROM admins WHERE email = $1 LIMIT 1", [normalizedEmail]);
+    const result = await pool.query<DatabaseAdmin>(
+      "SELECT * FROM admins WHERE LOWER(TRIM(email)) = $1 ORDER BY created_at ASC LIMIT 1",
+      [normalizedEmail]
+    );
     const admin = result.rows[0];
 
     if (!admin || !verifyPassword(input.password, admin.password_hash)) {
