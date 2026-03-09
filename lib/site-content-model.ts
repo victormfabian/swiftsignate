@@ -9,6 +9,7 @@ export type ContentCard = {
 
 export type SiteContent = {
   navigation: {
+    logoMedia: string;
     contactButtonLabel: string;
     contactModalEyebrow: string;
     contactModalTitle: string;
@@ -79,6 +80,7 @@ export type SiteContent = {
 
 export const defaultSiteContent: SiteContent = {
   navigation: {
+    logoMedia: "",
     contactButtonLabel: "Get in Contact",
     contactModalEyebrow: "Contact Swift Signate",
     contactModalTitle: "Tell us about your shipment or support request.",
@@ -133,7 +135,7 @@ export const defaultSiteContent: SiteContent = {
     bookTitle: "Book your shipment in clear, guided steps.",
     bookCopy:
       "Choose the shipment type, describe the package, review delivery options, enter contact details, and confirm payment.",
-    bookHelper: "Payment confirmation creates your tracking number and air waybill automatically.",
+    bookHelper: "Payment confirmation creates your tracking number automatically.",
     trackTitle: "Track your shipment in one simple view.",
     trackCopy: "Enter your tracking number to see the latest shipment status, route, and delivery progress.",
     trackHelper: "Use the tracking number from your booking confirmation to look up the latest shipment update.",
@@ -148,7 +150,7 @@ export const defaultSiteContent: SiteContent = {
     contactCopy: "Enter the sender and receiver details for pickup and delivery before you move to payment.",
     paymentTitle: "Payment",
     paymentCopy:
-      "Choose a payment option to finish the booking. Tracking number and air waybill will be created only after payment is confirmed.",
+      "Choose a payment option to finish the booking. Tracking number will be created only after payment is confirmed.",
     transferTitle: "Direct transfer",
     transferCopy: "Transfer to Swift Signate, then wait for finance confirmation before the shipment is issued.",
     paystackTitle: "Paystack",

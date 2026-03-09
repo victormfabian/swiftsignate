@@ -7,9 +7,11 @@ import { GlowButton } from "@/components/buttons";
 import { DashboardPage } from "@/components/dashboard-page";
 import { Navigation } from "@/components/navigation";
 import { useSiteContentStore } from "@/components/site-content-store";
+import { mediaSourceToBackground, resolveMediaSource } from "@/lib/media-utils";
 
 function CardIcon({ icon }: { icon: string }) {
   const baseClass = "h-10 w-10";
+  const media = resolveMediaSource(icon);
 
   switch (icon) {
     case "clipboard":
@@ -87,8 +89,110 @@ function CardIcon({ icon }: { icon: string }) {
         </svg>
       );
     default:
-      return null;
+      if (media.kind === "image") {
+        return <img src={media.src} alt="" className={`${baseClass} object-contain`} />;
+      }
+
+      if (media.kind === "video") {
+        return <video src={media.src} className={`${baseClass} rounded-xl object-cover`} autoPlay muted loop playsInline />;
+      }
+
+      return (
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-black/10 bg-white text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-600">
+          {media.label}
+        </div>
+      );
   }
+}
+
+function MediaTile({
+  source,
+  title,
+  className
+}: {
+  source?: string;
+  title: string;
+  className: string;
+}) {
+  const media = resolveMediaSource(source);
+  const backgroundImage = mediaSourceToBackground(source);
+
+  if (media.kind === "video") {
+    return (
+      <div className={`${className} overflow-hidden bg-neutral-900`}>
+        <video src={media.src} className="h-full w-full object-cover" autoPlay muted loop playsInline />
+      </div>
+    );
+  }
+
+  if (media.kind === "audio") {
+    return (
+      <div className={`${className} flex flex-col items-center justify-center gap-4 bg-[#f7f1e9] px-5 py-6 text-center`}>
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">{media.label}</div>
+        <audio controls className="w-full max-w-[280px]">
+          <source src={media.src} />
+        </audio>
+      </div>
+    );
+  }
+
+  if (media.kind === "pdf") {
+    return (
+      <div className={`${className} overflow-hidden bg-white`}>
+        <iframe src={media.src} title={title} className="h-full w-full" />
+      </div>
+    );
+  }
+
+  if (media.kind === "file") {
+    return (
+      <div className={`${className} flex flex-col items-center justify-center gap-4 bg-[#f7f1e9] px-5 py-6 text-center`}>
+        <div className="flex h-16 w-16 items-center justify-center rounded-[22px] border border-black/10 bg-white text-xs font-semibold uppercase tracking-[0.18em] text-neutral-700">
+          {media.label}
+        </div>
+        <a
+          href={media.src}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sm font-medium text-ember underline decoration-orange-200 underline-offset-4"
+        >
+          Open file
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={className}
+      style={backgroundImage ? { backgroundImage, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
+    />
+  );
+}
+
+function HeroBackground({ source }: { source: string }) {
+  const media = resolveMediaSource(source);
+  const backgroundImage = mediaSourceToBackground(source);
+
+  if (media.kind === "video") {
+    return (
+      <video
+        src={media.src}
+        className="absolute inset-0 h-full w-full object-cover"
+        autoPlay
+        muted
+        loop
+        playsInline
+      />
+    );
+  }
+
+  return (
+    <div
+      className="absolute inset-0"
+      style={backgroundImage ? { backgroundImage, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
+    />
+  );
 }
 
 function ServiceCard({
@@ -113,11 +217,10 @@ function ServiceCard({
       style={stacked ? { top: `calc(clamp(82px, 9vw, 112px) + ${index * 22}px)` } : undefined}
     >
       <div className={stacked ? "grid items-stretch lg:grid-cols-[0.48fr_0.52fr]" : ""}>
-        <div
-          className={stacked ? "h-56 w-full bg-cover bg-center md:h-[320px]" : "h-48 w-full bg-cover bg-center"}
-          style={{
-            backgroundImage: card.image
-          }}
+        <MediaTile
+          source={card.image}
+          title={card.title}
+          className={stacked ? "h-56 w-full md:h-[320px]" : "h-48 w-full"}
         />
 
         <div className={["flex flex-1 flex-col", stacked ? "p-7 lg:p-10" : "p-6 md:p-8"].join(" ")}>
@@ -203,15 +306,11 @@ export function LandingPage() {
   }, [activeHeroPanel]);
 
   return (
-    <main className="relative min-h-screen bg-[#f7f1e9] text-neutral-900">
+    <main className="relative min-h-screen overflow-x-hidden bg-[#f7f1e9] text-neutral-900">
       <section
         className="relative min-h-screen overflow-hidden"
-        style={{
-          backgroundImage: content.hero.backgroundImage,
-          backgroundSize: "cover",
-          backgroundPosition: "center"
-        }}
       >
+        <HeroBackground source={content.hero.backgroundImage} />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.16),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.14),transparent_24%)]" />
         <div className="relative px-4 pt-4 md:px-6">
           <Navigation />
@@ -307,12 +406,7 @@ export function LandingPage() {
       <section id="why-us" className="bg-[#fffaf4] px-4 py-16 md:px-6 md:py-20">
         <div className="mx-auto grid w-full max-w-6xl gap-10 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">
           <div className="overflow-hidden rounded-[32px] border border-black/8 bg-white shadow-[0_18px_40px_rgba(140,110,78,0.08)]">
-            <div
-              className="h-[320px] w-full bg-cover bg-center md:h-[420px]"
-              style={{
-                backgroundImage: content.whyUs.image
-              }}
-            />
+            <MediaTile source={content.whyUs.image} title={content.whyUs.title} className="h-[320px] w-full md:h-[420px]" />
           </div>
 
           <div className="text-center lg:text-left">

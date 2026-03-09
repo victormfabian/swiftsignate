@@ -984,7 +984,7 @@ export function DashboardPage({
 
   const handleTrackShipment = () => {
     if (!trackingInput.trim()) {
-      setNotice("Enter a tracking number or air waybill before searching.");
+      setNotice("Enter a tracking number before searching.");
       return;
     }
 
@@ -1143,9 +1143,9 @@ export function DashboardPage({
             loading: false,
             title: "Transfer submitted",
             message:
-              "Your transfer request has been sent for review. Swift Signate will update you with your tracking number and air waybill once payment is confirmed."
+              "Your transfer request has been sent for review. Swift Signate will update you with your tracking number once payment is confirmed."
           });
-          setNotice("Transfer submitted. You will receive the tracking number and air waybill after admin confirmation.");
+          setNotice("Transfer submitted. You will receive the tracking number after admin confirmation.");
         } catch {
           setTransferSubmitted(false);
           setFeedbackModal({
@@ -1221,9 +1221,9 @@ export function DashboardPage({
             open: true,
             loading: false,
             title: "Payment confirmed",
-            message: `Tracking number ${shipment.ref} and air waybill ${shipment.airWaybill} have been issued automatically.`
+            message: `Tracking number ${shipment.ref} has been issued automatically.`
           });
-          setNotice(`Payment confirmed. Tracking number ${shipment.ref} and air waybill ${shipment.airWaybill} are ready.`);
+          setNotice(`Payment confirmed. Tracking number ${shipment.ref} is ready.`);
         } catch {
           setFeedbackModal({
             open: true,
@@ -2267,7 +2267,7 @@ export function DashboardPage({
                     </button>
                   ) : paymentMethod === "transfer" && transferSubmitted ? (
                     <div className="rounded-[18px] border border-orange-200 bg-orange-50 px-4 py-4 text-sm leading-6 text-neutral-700">
-                      Transfer sent. Tracking number and air waybill will appear here after the admin confirms payment.
+                      Transfer sent. Your tracking number will appear here after the admin confirms payment.
                     </div>
                   ) : paymentMethod === "transfer" ? (
                     <button
@@ -2312,14 +2312,14 @@ export function DashboardPage({
         <SectionBadge label="Tracking" />
         <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Find your shipment</h2>
         <p className="mt-3 text-base leading-7 text-neutral-600">
-          Enter the tracking number or air waybill you received after payment was confirmed.
+          Enter the tracking number you received after payment was confirmed.
         </p>
 
         <div className="mt-6 flex flex-col gap-3">
           <input
             value={trackingInput}
             onChange={(event) => setTrackingInput(event.target.value.toUpperCase())}
-            placeholder="Enter tracking number or AWB"
+            placeholder="Enter tracking number"
             className="h-12 w-full rounded-full border border-black/8 bg-white px-5 text-sm text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-orange-300"
           />
           <button
@@ -2344,7 +2344,6 @@ export function DashboardPage({
                 <SectionBadge label="Shipment Details" />
                 <h2 className="mt-3 text-2xl font-semibold text-neutral-950">{trackingResult.ref}</h2>
                 <p className="mt-2 text-sm text-neutral-600">{trackingResult.customer}</p>
-                <p className="mt-1 text-sm text-neutral-500">Air waybill: {trackingResult.airWaybill}</p>
               </div>
               <span
                 className={[
@@ -2366,10 +2365,6 @@ export function DashboardPage({
               <div className="rounded-[20px] border border-black/8 bg-white p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
                 <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Estimated delivery</div>
                 <div className="mt-2 text-sm font-medium text-neutral-900">{trackingResult.eta}</div>
-              </div>
-              <div className="rounded-[20px] border border-black/8 bg-white p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
-                <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Air waybill</div>
-                <div className="mt-2 text-sm font-medium text-neutral-900">{trackingResult.airWaybill}</div>
               </div>
             </div>
 
@@ -2394,7 +2389,7 @@ export function DashboardPage({
           </>
         ) : !trackingLookupStarted ? (
           <div className="flex min-h-[320px] items-center justify-center rounded-[24px] border border-black/8 bg-white p-6 text-center text-sm leading-7 text-neutral-600">
-            Enter your tracking number or air waybill to view the latest shipment update.
+            Enter your tracking number to view the latest shipment update.
           </div>
         ) : (
           <div className="flex min-h-[320px] items-center justify-center rounded-[24px] border border-black/8 bg-white p-6 text-center text-sm leading-7 text-neutral-600">
@@ -2408,7 +2403,7 @@ export function DashboardPage({
   const ShellTag = isModal ? "div" : "main";
 
   return (
-    <ShellTag className={isModal ? "w-full bg-white" : "min-h-screen bg-[#f7f4ef] px-4 py-6 md:px-6 md:py-8"}>
+    <ShellTag className={isModal ? "w-full overflow-x-hidden bg-white" : "min-h-screen overflow-x-hidden bg-[#f7f4ef] px-4 py-6 md:px-6 md:py-8"}>
       <div className={isModal ? "w-full" : "mx-auto w-full max-w-6xl"}>
         {isModal ? (
           <div
@@ -2457,7 +2452,7 @@ export function DashboardPage({
           <header className="flex flex-col gap-5 rounded-[28px] border border-black/8 bg-white px-5 py-5 shadow-[0_16px_34px_rgba(140,110,78,0.06)] md:px-8 md:py-6">
             <div className="flex items-center justify-between gap-4">
               <Link href="/" className="flex items-center gap-3">
-                <LogoMark />
+                <LogoMark mediaSrc={content.navigation.logoMedia} />
                 <span className="text-sm font-medium text-neutral-700">Swift Signate</span>
               </Link>
               <div className="flex flex-wrap items-center justify-end gap-2">

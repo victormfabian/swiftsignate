@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { motion } from "framer-motion";
 import { useAuthSession } from "@/components/auth-session";
 import { ConsoleShell } from "@/components/console-shell";
 import {
-  previewAirWaybill,
   previewTrackingNumber,
   type ContactRequest,
   type PaymentRequest,
@@ -14,6 +13,7 @@ import {
   useShipmentStore
 } from "@/components/shipment-store";
 import { type ContentCard, type SiteContent, useSiteContentStore } from "@/components/site-content-store";
+import { builtInIconKeys, resolveMediaSource } from "@/lib/media-utils";
 
 const shipmentStatuses: ShipmentStatus[] = ["Booked", "Picked up", "In transit", "Out for delivery", "Delivered"];
 const paymentMethodOptions = ["Direct transfer", "Paystack"] as const;
@@ -66,8 +66,192 @@ function MetricCard({ label, value, detail, delay = 0 }: MetricCardProps) {
   );
 }
 
+function MediaPreview({
+  value,
+  title,
+  compact = false
+}: {
+  value?: string;
+  title: string;
+  compact?: boolean;
+}) {
+  const media = resolveMediaSource(value);
+  const frameClassName = compact
+    ? "mt-3 overflow-hidden rounded-[18px] border border-black/8 bg-white"
+    : "mt-3 overflow-hidden rounded-[20px] border border-black/8 bg-white";
+  const heightClassName = compact ? "h-36" : "h-44";
+
+  if (media.kind === "empty") {
+    return (
+      <div className={`${frameClassName} ${heightClassName} flex items-center justify-center text-sm text-neutral-400`}>
+        No media selected
+      </div>
+    );
+  }
+
+  if (media.kind === "image" || media.kind === "css") {
+    return (
+      <div
+        className={`${frameClassName} ${heightClassName} bg-cover bg-center`}
+        style={{ backgroundImage: media.kind === "css" ? media.src : `url("${media.src.replace(/"/g, '\\"')}")` }}
+      />
+    );
+  }
+
+  if (media.kind === "video") {
+    return (
+      <div className={`${frameClassName} ${heightClassName}`}>
+        <video src={media.src} className="h-full w-full object-cover" controls playsInline />
+      </div>
+    );
+  }
+
+  if (media.kind === "audio") {
+    return (
+      <div className={`${frameClassName} ${heightClassName} flex flex-col items-center justify-center gap-4 px-4 py-5`}>
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">{media.label}</div>
+        <audio controls className="w-full">
+          <source src={media.src} />
+        </audio>
+      </div>
+    );
+  }
+
+  if (media.kind === "pdf") {
+    return (
+      <div className={`${frameClassName} ${heightClassName}`}>
+        <iframe src={media.src} title={title} className="h-full w-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${frameClassName} ${heightClassName} flex flex-col items-center justify-center gap-4 px-4 py-5`}>
+      <div className="flex h-16 w-16 items-center justify-center rounded-[20px] border border-black/10 bg-[#fcfaf7] text-xs font-semibold uppercase tracking-[0.18em] text-neutral-700">
+        {media.label}
+      </div>
+      <a
+        href={media.src}
+        target="_blank"
+        rel="noreferrer"
+        className="text-sm font-medium text-ember underline decoration-orange-200 underline-offset-4"
+      >
+        Open file
+      </a>
+    </div>
+  );
+}
+
+type MediaFieldProps = {
+  label: string;
+  title: string;
+  value?: string;
+  onChange: (value: string) => void;
+  onUpload: (event: ChangeEvent<HTMLInputElement>) => void;
+  placeholder?: string;
+  compact?: boolean;
+};
+
+function MediaField({
+  label,
+  title,
+  value,
+  onChange,
+  onUpload,
+  placeholder = "Paste a media URL or upload a file",
+  compact = false
+}: MediaFieldProps) {
+  return (
+    <div>
+      {label ? <span className={labelClassName}>{label}</span> : null}
+      <div className="flex flex-col gap-3">
+        <input
+          value={value ?? ""}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          className={fieldClassName}
+        />
+        <div className="flex flex-wrap gap-3">
+          <label className="inline-flex min-h-[42px] cursor-pointer items-center justify-center rounded-[12px] border border-black/8 bg-white px-4 text-sm font-medium text-neutral-700 transition-colors hover:border-orange-300 hover:text-neutral-950">
+            Upload file
+            <input type="file" accept="*/*" className="hidden" onChange={onUpload} />
+          </label>
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="inline-flex min-h-[42px] items-center justify-center rounded-[12px] border border-black/8 bg-white px-4 text-sm font-medium text-neutral-600 transition-colors hover:border-orange-300 hover:text-neutral-950"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+      <MediaPreview value={value} title={title} compact={compact} />
+    </div>
+  );
+}
+
+type IconFieldProps = {
+  label: string;
+  title: string;
+  value: string;
+  fallbackValue: string;
+  onChange: (value: string) => void;
+  onUpload: (event: ChangeEvent<HTMLInputElement>) => void;
+};
+
+function IconField({ label, title, value, fallbackValue, onChange, onUpload }: IconFieldProps) {
+  const hasUploadedMedia = value.trim() !== "" && !builtInIconKeys.includes(value as (typeof builtInIconKeys)[number]);
+
+  return (
+    <div>
+      <span className={labelClassName}>{label}</span>
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+        <select
+          value={hasUploadedMedia ? "__uploaded__" : value}
+          onChange={(event) => {
+            if (event.target.value === "__uploaded__") {
+              return;
+            }
+
+            onChange(event.target.value);
+          }}
+          className={fieldClassName}
+        >
+          {builtInIconKeys.map((iconKey) => (
+            <option key={iconKey} value={iconKey}>
+              {iconKey}
+            </option>
+          ))}
+          <option value="__uploaded__">Uploaded media</option>
+        </select>
+        <label className="inline-flex min-h-[42px] cursor-pointer items-center justify-center rounded-[12px] border border-black/8 bg-white px-4 text-sm font-medium text-neutral-700 transition-colors hover:border-orange-300 hover:text-neutral-950">
+          Upload
+          <input type="file" accept="*/*" className="hidden" onChange={onUpload} />
+        </label>
+        <button
+          type="button"
+          onClick={() => onChange(fallbackValue)}
+          className="inline-flex min-h-[42px] items-center justify-center rounded-[12px] border border-black/8 bg-white px-4 text-sm font-medium text-neutral-600 transition-colors hover:border-orange-300 hover:text-neutral-950"
+        >
+          Reset
+        </button>
+      </div>
+      <MediaPreview value={hasUploadedMedia ? value : ""} title={title} compact />
+    </div>
+  );
+}
+
 function cloneContent(content: SiteContent) {
   return JSON.parse(JSON.stringify(content)) as SiteContent;
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
+    reader.readAsDataURL(file);
+  });
 }
 
 export function AdminPage() {
@@ -261,6 +445,26 @@ export function AdminPage() {
     }));
   };
 
+  const handleMediaUpload = async (
+    event: ChangeEvent<HTMLInputElement>,
+    applyValue: (value: string) => void
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      applyValue(dataUrl);
+      setContentMessage(`${file.name} is ready. Save site content to publish the uploaded media.`);
+    } catch {
+      setContentMessage(`Could not load ${file.name}. Try another file.`);
+    }
+  };
+
   const handleSaveShipment = async () => {
     if (!shipmentDraft || !selectedShipmentRef) {
       return;
@@ -305,9 +509,7 @@ export function AdminPage() {
       await persistRequestDraft();
       const shipment = await approvePaymentRequest(requestDraft.id);
       if (shipment) {
-        setRequestMessage(
-          `Payment confirmed. Tracking number ${shipment.ref} and air waybill ${shipment.airWaybill} were issued automatically.`
-        );
+        setRequestMessage(`Payment confirmed. Tracking number ${shipment.ref} was issued automatically.`);
         setSelectedShipmentRef(shipment.ref);
         return;
       }
@@ -339,7 +541,7 @@ export function AdminPage() {
   const handleSaveContent = async () => {
     try {
       await updateContent(contentDraft);
-      setContentMessage("Landing page, booking copy, icons, and images were updated.");
+      setContentMessage("Landing page, booking copy, logo, and media were updated.");
     } catch {
       setContentMessage("Could not save the site content right now.");
     }
@@ -382,7 +584,12 @@ export function AdminPage() {
   }
 
   return (
-    <ConsoleShell active="admin" eyebrow="Swift Admin" title="Manage payments, bookings, content, and customer records">
+    <ConsoleShell
+      active="admin"
+      eyebrow="Swift Admin"
+      title="Manage payments, bookings, content, and customer records"
+      logoMedia={content.navigation.logoMedia}
+    >
       <div className="space-y-6">
         <div className="flex flex-col gap-3 rounded-[24px] border border-black/8 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-neutral-700">
@@ -427,7 +634,7 @@ export function AdminPage() {
           <MetricCard
             label="Next IDs"
             value={previewTrackingNumber(nextSequence)}
-            detail={`Next AWB: ${previewAirWaybill(nextSequence)}`}
+            detail="The next tracking number will be assigned on confirmation."
             delay={0.15}
           />
         </div>
@@ -855,7 +1062,7 @@ export function AdminPage() {
                       {shipment.origin} {"->"} {shipment.destination}
                     </div>
                     <div className="mt-2 text-xs uppercase tracking-[0.16em] text-neutral-500">
-                      AWB {shipment.airWaybill}
+                      {shipment.createdAt}
                     </div>
                   </button>
                 );
@@ -874,14 +1081,6 @@ export function AdminPage() {
                       <input
                         value={shipmentDraft.ref}
                         onChange={(event) => handleShipmentField("ref", event.target.value)}
-                        className={fieldClassName}
-                      />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Air waybill</span>
-                      <input
-                        value={shipmentDraft.airWaybill}
-                        onChange={(event) => handleShipmentField("airWaybill", event.target.value)}
                         className={fieldClassName}
                       />
                     </label>
@@ -998,7 +1197,7 @@ export function AdminPage() {
                       Save shipment changes
                     </button>
                     <div className="rounded-[18px] border border-black/8 bg-[#fcfaf7] px-4 py-3 text-sm text-neutral-600">
-                      Next default IDs: {previewTrackingNumber(nextSequence)} / {previewAirWaybill(nextSequence)}
+                      Next default tracking number: {previewTrackingNumber(nextSequence)}
                     </div>
                   </div>
                 </>
@@ -1024,10 +1223,10 @@ export function AdminPage() {
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
               <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Site content studio</div>
-              <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Edit landing page, booking modal, icons, images, and copy</h2>
+              <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Edit landing page, booking modal, media, and copy</h2>
             </div>
             <div className="text-sm text-neutral-500">
-              Update every section from forms instead of editing raw JSON.
+              Update every section from forms, upload media files, and save the changes live.
             </div>
           </div>
 
@@ -1035,6 +1234,17 @@ export function AdminPage() {
             <div className="rounded-[22px] border border-black/8 bg-[#fcfaf7] p-5">
               <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Header and contact modal</div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <MediaField
+                    label="Logo media"
+                    title="Swift Signate logo"
+                    value={contentDraft.navigation.logoMedia}
+                    onChange={(value) => handleContentField("navigation", "logoMedia", value)}
+                    onUpload={(event) => void handleMediaUpload(event, (value) => handleContentField("navigation", "logoMedia", value))}
+                    placeholder="Paste a logo URL or upload an image, SVG, or video"
+                    compact
+                  />
+                </div>
                 <label>
                   <span className={labelClassName}>Contact button label</span>
                   <input
@@ -1129,14 +1339,16 @@ export function AdminPage() {
                     className={areaClassName}
                   />
                 </label>
-                <label className="md:col-span-2">
-                  <span className={labelClassName}>Background image / CSS background</span>
-                  <textarea
+                <div className="md:col-span-2">
+                  <MediaField
+                    label="Background media"
+                    title="Hero background"
                     value={contentDraft.hero.backgroundImage}
-                    onChange={(event) => handleContentField("hero", "backgroundImage", event.target.value)}
-                    className={areaClassName}
+                    onChange={(value) => handleContentField("hero", "backgroundImage", value)}
+                    onUpload={(event) => void handleMediaUpload(event, (value) => handleContentField("hero", "backgroundImage", value))}
+                    placeholder="Paste an image or video URL, or upload any media file"
                   />
-                </label>
+                </div>
                 <label>
                   <span className={labelClassName}>Track button label</span>
                   <input
@@ -1173,14 +1385,27 @@ export function AdminPage() {
                         <span className={labelClassName}>Title</span>
                         <input value={card.title} onChange={(event) => handleCardField("services", index, "title", event.target.value)} className={fieldClassName} />
                       </label>
-                      <label>
-                        <span className={labelClassName}>Icon key</span>
-                        <input value={card.icon} onChange={(event) => handleCardField("services", index, "icon", event.target.value)} className={fieldClassName} />
-                      </label>
-                      <label>
-                        <span className={labelClassName}>Image / CSS background</span>
-                        <textarea value={card.image ?? ""} onChange={(event) => handleCardField("services", index, "image", event.target.value)} className={areaClassName} />
-                      </label>
+                      <div>
+                        <IconField
+                          label="Card icon"
+                          title={`${card.title} icon`}
+                          value={card.icon}
+                          fallbackValue="freight"
+                          onChange={(value) => handleCardField("services", index, "icon", value)}
+                          onUpload={(event) => void handleMediaUpload(event, (value) => handleCardField("services", index, "icon", value))}
+                        />
+                      </div>
+                      <div>
+                        <MediaField
+                          label="Card media"
+                          title={card.title}
+                          value={card.image ?? ""}
+                          onChange={(value) => handleCardField("services", index, "image", value)}
+                          onUpload={(event) => void handleMediaUpload(event, (value) => handleCardField("services", index, "image", value))}
+                          placeholder="Paste a media URL or upload an image, video, audio, PDF, or file"
+                          compact
+                        />
+                      </div>
                       <label>
                         <span className={labelClassName}>Copy</span>
                         <textarea value={card.copy} onChange={(event) => handleCardField("services", index, "copy", event.target.value)} className={areaClassName} />
@@ -1206,10 +1431,16 @@ export function AdminPage() {
                   <span className={labelClassName}>Copy</span>
                   <textarea value={contentDraft.whyUs.copy} onChange={(event) => handleContentField("whyUs", "copy", event.target.value)} className={areaClassName} />
                 </label>
-                <label className="md:col-span-2">
-                  <span className={labelClassName}>Section image / CSS background</span>
-                  <textarea value={contentDraft.whyUs.image} onChange={(event) => handleContentField("whyUs", "image", event.target.value)} className={areaClassName} />
-                </label>
+                <div className="md:col-span-2">
+                  <MediaField
+                    label="Section media"
+                    title="Why choose us media"
+                    value={contentDraft.whyUs.image}
+                    onChange={(value) => handleContentField("whyUs", "image", value)}
+                    onUpload={(event) => void handleMediaUpload(event, (value) => handleContentField("whyUs", "image", value))}
+                    placeholder="Paste a media URL or upload an image, video, audio, PDF, or file"
+                  />
+                </div>
               </div>
               <div className="mt-5 grid gap-4 xl:grid-cols-3">
                 {contentDraft.whyUs.points.map((point, index) => (
@@ -1220,10 +1451,16 @@ export function AdminPage() {
                         <span className={labelClassName}>Title</span>
                         <input value={point.title} onChange={(event) => handleCardField("whyUs", index, "title", event.target.value)} className={fieldClassName} />
                       </label>
-                      <label>
-                        <span className={labelClassName}>Icon key</span>
-                        <input value={point.icon} onChange={(event) => handleCardField("whyUs", index, "icon", event.target.value)} className={fieldClassName} />
-                      </label>
+                      <div>
+                        <IconField
+                          label="Card icon"
+                          title={`${point.title} icon`}
+                          value={point.icon}
+                          fallbackValue="clipboard"
+                          onChange={(value) => handleCardField("whyUs", index, "icon", value)}
+                          onUpload={(event) => void handleMediaUpload(event, (value) => handleCardField("whyUs", index, "icon", value))}
+                        />
+                      </div>
                       <label>
                         <span className={labelClassName}>Copy</span>
                         <textarea value={point.copy} onChange={(event) => handleCardField("whyUs", index, "copy", event.target.value)} className={areaClassName} />
@@ -1259,10 +1496,16 @@ export function AdminPage() {
                         <span className={labelClassName}>Title</span>
                         <input value={step.title} onChange={(event) => handleProcessStepField(index, "title", event.target.value)} className={fieldClassName} />
                       </label>
-                      <label>
-                        <span className={labelClassName}>Icon key</span>
-                        <input value={step.icon} onChange={(event) => handleProcessStepField(index, "icon", event.target.value)} className={fieldClassName} />
-                      </label>
+                      <div>
+                        <IconField
+                          label="Step icon"
+                          title={`${step.title} icon`}
+                          value={step.icon}
+                          fallbackValue={index === 0 ? "quote" : index === 1 ? "route" : "delivery"}
+                          onChange={(value) => handleProcessStepField(index, "icon", value)}
+                          onUpload={(event) => void handleMediaUpload(event, (value) => handleProcessStepField(index, "icon", value))}
+                        />
+                      </div>
                       <label>
                         <span className={labelClassName}>Copy</span>
                         <textarea value={step.copy} onChange={(event) => handleProcessStepField(index, "copy", event.target.value)} className={areaClassName} />

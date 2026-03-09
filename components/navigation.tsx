@@ -110,7 +110,7 @@ export function Navigation() {
       >
         <div className="flex flex-wrap items-center justify-between gap-3 px-1 py-3 sm:gap-4">
           <Link href="/" className="shrink-0">
-            <LogoMark tone="light" />
+            <LogoMark tone="light" mediaSrc={content.navigation.logoMedia} />
           </Link>
 
           <div className="ml-auto flex items-center gap-2 sm:gap-3">

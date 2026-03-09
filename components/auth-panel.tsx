@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogoMark } from "@/components/logo-mark";
+import { useSiteContentStore } from "@/components/site-content-store";
 
 type AuthPanelProps = {
   role: "user" | "admin";
@@ -24,6 +25,7 @@ function isValidEmail(value: string) {
 
 export function AuthPanel({ role, mode = "page", title, copy, nextPath, onSuccess, onClose }: AuthPanelProps) {
   const router = useRouter();
+  const { content } = useSiteContentStore();
   const [userMode, setUserMode] = useState<"signin" | "signup">("signin");
   const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -205,7 +207,7 @@ export function AuthPanel({ role, mode = "page", title, copy, nextPath, onSucces
         <div className="rounded-[28px] bg-white p-5 shadow-[0_20px_46px_rgba(140,110,78,0.08)] md:p-7">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <LogoMark />
+              <LogoMark mediaSrc={content.navigation.logoMedia} />
               <div>
                 <div className="text-sm font-semibold text-neutral-950">Swift Signate</div>
                 <div className="text-xs text-neutral-500">{role === "admin" ? "Secure admin access" : "Account access"}</div>

@@ -607,9 +607,7 @@ export async function getShipmentByTrackingReference(reference: string) {
 
   return (
     shipments.find(
-      (shipment) =>
-        shipment.ref.trim().toUpperCase() === normalizedReference ||
-        shipment.airWaybill.trim().toUpperCase() === normalizedReference
+      (shipment) => shipment.ref.trim().toUpperCase() === normalizedReference
     ) ?? null
   );
 }
@@ -620,7 +618,7 @@ export async function bookShipmentRecord(input: BookingInput) {
   await insertCustomerUpdate({
     customerEmail: input.customerEmail,
     title: "Payment confirmed",
-    message: `Your payment has been confirmed. Tracking number ${shipment.ref} and air waybill ${shipment.airWaybill} are now ready.`
+    message: `Your payment has been confirmed. Tracking number ${shipment.ref} is now ready.`
   });
 
   return shipment;
@@ -758,7 +756,7 @@ export async function approvePaymentRequestRecord(requestId: string) {
   await insertCustomerUpdate({
     customerEmail: request.customerEmail,
     title: "Transfer confirmed",
-    message: `Your transfer has been confirmed. Tracking number ${shipment.ref} and air waybill ${shipment.airWaybill} are now available.`
+    message: `Your transfer has been confirmed. Tracking number ${shipment.ref} is now available.`
   });
 
   return shipment;
