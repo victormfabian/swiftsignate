@@ -596,6 +596,24 @@ export async function getOperationalStore(options?: {
   };
 }
 
+export async function getShipmentByTrackingReference(reference: string) {
+  const normalizedReference = reference.trim().toUpperCase();
+
+  if (!normalizedReference) {
+    return null;
+  }
+
+  const shipments = await listShipments();
+
+  return (
+    shipments.find(
+      (shipment) =>
+        shipment.ref.trim().toUpperCase() === normalizedReference ||
+        shipment.airWaybill.trim().toUpperCase() === normalizedReference
+    ) ?? null
+  );
+}
+
 export async function bookShipmentRecord(input: BookingInput) {
   const shipment = await insertShipment(input);
 

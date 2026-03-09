@@ -7,7 +7,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { AuthPanel } from "@/components/auth-panel";
 import { useAuthSession } from "@/components/auth-session";
 import { LogoMark } from "@/components/logo-mark";
-import { getShipmentSteps, useShipmentStore } from "@/components/shipment-store";
+import { getShipmentSteps, useShipmentStore, type Shipment } from "@/components/shipment-store";
 import { useSiteContentStore } from "@/components/site-content-store";
 import type { BookingRecordDetails } from "@/lib/shipment-model";
 
@@ -417,6 +417,7 @@ export function DashboardPage({
     customerUpdates,
     bookShipment,
     submitTransferRequest,
+    lookupShipment,
     markCustomerUpdateRead
   } = useShipmentStore();
   const { currentUser, isUserAuthenticated, loading: authLoading, refreshSession, signOut } = useAuthSession();
@@ -430,8 +431,11 @@ export function DashboardPage({
   const [bookingStep, setBookingStep] = useState<BookingStep>(1);
   const [quoteSort, setQuoteSort] = useState<QuoteSort>("fastest");
   const [notice, setNotice] = useState("");
-  const [trackingInput, setTrackingInput] = useState(initialTrackingRef ?? "SS-2026-100001");
-  const [trackingQuery, setTrackingQuery] = useState(initialTrackingRef ?? "SS-2026-100001");
+  const [trackingInput, setTrackingInput] = useState(initialTrackingRef ?? "");
+  const [trackingQuery, setTrackingQuery] = useState(initialTrackingRef ?? "");
+  const [trackingResult, setTrackingResult] = useState<Shipment | null>(null);
+  const [trackingLookupStarted, setTrackingLookupStarted] = useState(Boolean(initialTrackingRef));
+  const [trackingLookupLoading, setTrackingLookupLoading] = useState(false);
   const [bookingForm, setBookingForm] = useState<BookingForm>(INITIAL_BOOKING_FORM);
   const [packageEntries, setPackageEntries] = useState<PackageEntry[]>([]);
   const [selectedQuote, setSelectedQuote] = useState<QuoteOption | null>(null);
@@ -453,11 +457,8 @@ export function DashboardPage({
   const compactStepperRef = useRef<HTMLDivElement | null>(null);
   const previousRouteProgressRef = useRef(0);
   const previousPackageProgressRef = useRef(0);
+  const requiresUserAuth = activeTab !== "track";
 
-  const trackingResult = shipments.find((shipment) =>
-    shipment.ref.toLowerCase().includes(trackingQuery.trim().toLowerCase()) ||
-    shipment.airWaybill.toLowerCase().includes(trackingQuery.trim().toLowerCase())
-  );
   const activeStepIndex = trackingResult
     ? shipmentSteps.findIndex((step) => step === trackingResult.status)
     : -1;
@@ -542,10 +543,48 @@ export function DashboardPage({
     const normalizedRef = initialTrackingRef.toUpperCase();
     setTrackingInput(normalizedRef);
     setTrackingQuery(normalizedRef);
+    setTrackingLookupStarted(true);
     if (lockedTab !== "book") {
       setActiveTab("track");
     }
   }, [initialTrackingRef, lockedTab]);
+
+  useEffect(() => {
+    if (!trackingQuery.trim()) {
+      setTrackingResult(null);
+      setTrackingLookupLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadTrackingResult = async () => {
+      setTrackingLookupLoading(true);
+
+      try {
+        const shipment = await lookupShipment(trackingQuery);
+
+        if (!cancelled) {
+          setTrackingResult(shipment);
+        }
+      } catch {
+        if (!cancelled) {
+          setTrackingResult(null);
+          setNotice("We could not check that shipment right now. Please try again.");
+        }
+      } finally {
+        if (!cancelled) {
+          setTrackingLookupLoading(false);
+        }
+      }
+    };
+
+    void loadTrackingResult();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lookupShipment, trackingQuery]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -950,6 +989,7 @@ export function DashboardPage({
     }
 
     setNotice("");
+    setTrackingLookupStarted(true);
     setTrackingQuery(trackingInput.trim().toUpperCase());
   };
 
@@ -1235,7 +1275,7 @@ export function DashboardPage({
     }
   };
 
-  if (authLoading) {
+  if (authLoading && requiresUserAuth) {
     return (
       <div className={isModal ? "bg-white p-8" : "min-h-screen bg-white px-4 py-8"}>
         <div className="mx-auto flex max-w-3xl items-center justify-center rounded-[28px] border border-black/8 bg-white p-8 text-sm text-neutral-600 shadow-[0_18px_40px_rgba(140,110,78,0.08)]">
@@ -1245,14 +1285,14 @@ export function DashboardPage({
     );
   }
 
-  if (!isUserAuthenticated) {
+  if (!isUserAuthenticated && requiresUserAuth) {
     return (
       <AuthPanel
         role="user"
         mode={isModal ? "modal" : "page"}
-        title={activeTab === "track" ? "Sign in to track your shipment" : "Sign in to book and manage shipments"}
+        title="Sign in to book and manage shipments"
         copy="Create an account or sign in before using the Swift Signate customer workspace."
-        nextPath={activeTab === "track" ? "/dashboard/track" : "/dashboard/book"}
+        nextPath="/dashboard/book"
         onSuccess={() => {
           void refreshSession();
         }}
@@ -2290,15 +2330,14 @@ export function DashboardPage({
             Track Shipment
           </button>
         </div>
-
-        <div className="mt-6 rounded-[22px] border border-black/8 bg-white p-4 text-sm leading-7 text-neutral-600 shadow-[0_10px_18px_rgba(140,110,78,0.06)]">
-          Try one of these: <span className="font-medium text-neutral-900">SS-2026-100001</span>,{" "}
-          <span className="font-medium text-neutral-900">AWB-2026-100002</span>
-        </div>
       </div>
 
       <div className="rounded-[28px] bg-white p-6 shadow-[0_14px_28px_rgba(140,110,78,0.06)]">
-        {trackingResult ? (
+        {trackingLookupLoading ? (
+          <div className="flex min-h-[320px] items-center justify-center rounded-[24px] border border-black/8 bg-white p-6 text-center text-sm leading-7 text-neutral-600">
+            Checking your shipment status...
+          </div>
+        ) : trackingResult ? (
           <>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -2353,9 +2392,13 @@ export function DashboardPage({
               ))}
             </div>
           </>
+        ) : !trackingLookupStarted ? (
+          <div className="flex min-h-[320px] items-center justify-center rounded-[24px] border border-black/8 bg-white p-6 text-center text-sm leading-7 text-neutral-600">
+            Enter your tracking number or air waybill to view the latest shipment update.
+          </div>
         ) : (
           <div className="flex min-h-[320px] items-center justify-center rounded-[24px] border border-black/8 bg-white p-6 text-center text-sm leading-7 text-neutral-600">
-            No shipment matches that number yet. Check the number and try again, or create a new booking in the booking tab.
+            No shipment matches that number yet. Check the number and try again.
           </div>
         )}
       </div>
@@ -2380,21 +2423,25 @@ export function DashboardPage({
               </div>
             )}
             <div className="flex items-center gap-2">
-              <div className="hidden rounded-full border border-black/8 bg-white px-4 py-2 text-xs uppercase tracking-[0.16em] text-neutral-600 md:inline-flex">
-                {currentUser?.name}
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  void signOut();
-                  if (isModal && onClose) {
-                    onClose();
-                  }
-                }}
-                className="rounded-full border border-black/8 bg-white px-4 py-2 text-sm text-neutral-700 transition-colors hover:border-orange-300 hover:text-neutral-950"
-              >
-                Sign Out
-              </button>
+              {isUserAuthenticated && (
+                <>
+                  <div className="hidden rounded-full border border-black/8 bg-white px-4 py-2 text-xs uppercase tracking-[0.16em] text-neutral-600 md:inline-flex">
+                    {currentUser?.name}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void signOut();
+                      if (isModal && onClose) {
+                        onClose();
+                      }
+                    }}
+                    className="rounded-full border border-black/8 bg-white px-4 py-2 text-sm text-neutral-700 transition-colors hover:border-orange-300 hover:text-neutral-950"
+                  >
+                    Sign Out
+                  </button>
+                </>
+              )}
               {onClose && (
                 <button
                   type="button"
@@ -2414,19 +2461,30 @@ export function DashboardPage({
                 <span className="text-sm font-medium text-neutral-700">Swift Signate</span>
               </Link>
               <div className="flex flex-wrap items-center justify-end gap-2">
-                <div className="rounded-full bg-[#fcfaf7] px-4 py-2 text-xs uppercase tracking-[0.16em] text-neutral-600">
-                  Signed in as {currentUser?.name}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void signOut();
-                    router.push("/");
-                  }}
-                  className="rounded-full bg-[#fcfaf7] px-4 py-2 text-sm text-neutral-700 transition-colors hover:text-neutral-950"
-                >
-                  Sign Out
-                </button>
+                {isUserAuthenticated ? (
+                  <>
+                    <div className="rounded-full bg-[#fcfaf7] px-4 py-2 text-xs uppercase tracking-[0.16em] text-neutral-600">
+                      Signed in as {currentUser?.name}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void signOut();
+                        router.push("/");
+                      }}
+                      className="rounded-full bg-[#fcfaf7] px-4 py-2 text-sm text-neutral-700 transition-colors hover:text-neutral-950"
+                    >
+                      Sign Out
+                    </button>
+                  </>
+                ) : (
+                  <Link
+                    href="/auth?next=%2Fdashboard%2Fbook"
+                    className="rounded-full bg-[#fcfaf7] px-4 py-2 text-sm text-neutral-700 transition-colors hover:text-neutral-950"
+                  >
+                    Sign In
+                  </Link>
+                )}
                 <Link
                   href="/"
                   className="rounded-full bg-[#fcfaf7] px-4 py-2 text-sm text-neutral-700 transition-colors hover:text-neutral-950"
@@ -2532,7 +2590,7 @@ export function DashboardPage({
           </div>
         </section>
 
-        {!isModal && (
+        {!isModal && isUserAuthenticated && (
           <section className="mt-6 rounded-[28px] border border-black/8 bg-white p-5 shadow-[0_16px_34px_rgba(140,110,78,0.06)] md:p-8">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>

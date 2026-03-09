@@ -144,6 +144,31 @@ export function useShipmentStore() {
     return result.contactRequest;
   }, []);
 
+  const lookupShipment = useCallback(async (reference: string) => {
+    const normalizedReference = reference.trim().toUpperCase();
+
+    if (!normalizedReference) {
+      return null;
+    }
+
+    const response = await fetch(`/api/operations/shipment/${encodeURIComponent(normalizedReference)}`, {
+      method: "GET",
+      cache: "no-store"
+    });
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    const result = await readJson<{ ok: boolean; shipment: Shipment }>(response);
+
+    if (!response.ok || !result.ok) {
+      throw new Error("Could not fetch shipment.");
+    }
+
+    return result.shipment;
+  }, []);
+
   const approvePaymentRequest = useCallback(
     async (requestId: string) => {
       const response = await fetch(`/api/operations/payment-request/${encodeURIComponent(requestId)}/approve`, {
@@ -292,6 +317,7 @@ export function useShipmentStore() {
     updateShipmentRecord,
     updatePaymentRequest,
     updateContactRequest,
+    lookupShipment,
     markCustomerUpdateRead
   };
 }

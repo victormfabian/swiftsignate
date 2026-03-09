@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth-session";
-import { updateShipmentRecordByRef } from "@/lib/operations-db";
+import { getShipmentByTrackingReference, updateShipmentRecordByRef } from "@/lib/operations-db";
 import type { Shipment } from "@/lib/shipment-model";
 
 export const runtime = "nodejs";
@@ -10,6 +10,20 @@ type RouteContext = {
     ref: string;
   }>;
 };
+
+export async function GET(_request: Request, { params }: RouteContext) {
+  const { ref } = await params;
+  const shipment = await getShipmentByTrackingReference(ref);
+
+  if (!shipment) {
+    return NextResponse.json({ ok: false, message: "Shipment not found." }, { status: 404 });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    shipment
+  });
+}
 
 export async function PATCH(request: Request, { params }: RouteContext) {
   const session = await getAuthSession();
