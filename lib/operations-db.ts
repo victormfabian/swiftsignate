@@ -3,7 +3,7 @@ import "server-only";
 import { mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { getMySqlPool, isMySqlConfigured } from "@/lib/mysql";
+import { getPostgresPool, isSupabaseConfigured } from "@/lib/supabase-postgres";
 import {
   type BookingInput,
   type BookingRecordDetails,
@@ -32,16 +32,17 @@ type SqliteDatabase = import("node:sqlite").DatabaseSync;
 const require = createRequire(import.meta.url);
 
 let sqliteDatabase: SqliteDatabase | null = null;
-let mySqlReady: Promise<void> | null = null;
+let postgresReady: Promise<void> | null = null;
 
-type PaymentRequestRow = Omit<PaymentRequest, "shipmentRef" | "airWaybill" | "details"> & {
+type PaymentRequestRow = Omit<PaymentRequest, "shipmentRef" | "airWaybill" | "details" | "amount"> & {
   shipmentRef: string | null;
   airWaybill: string | null;
   details: string | null;
+  amount: number | string;
 };
 
 type CustomerUpdateRow = Omit<CustomerUpdate, "read"> & {
-  read: number;
+  read: boolean | number;
 };
 
 type ShipmentRow = Omit<Shipment, "details"> & {
@@ -49,7 +50,7 @@ type ShipmentRow = Omit<Shipment, "details"> & {
 };
 
 type ContactRequestRow = Omit<ContactRequest, "read"> & {
-  read: number;
+  read: boolean | number;
 };
 
 function serializeDetails(details: BookingRecordDetails | null | undefined) {
@@ -80,18 +81,6 @@ function ensureSqliteColumn(db: SqliteDatabase, table: string, column: string, d
 
   if (!columns.some((current) => current.name === column)) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-  }
-}
-
-async function ensureMySqlColumn(table: string, column: string, definition: string) {
-  const pool = getMySqlPool();
-  const [rows] = (await pool.query(
-    "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1",
-    [table, column]
-  )) as unknown as [Array<{ COLUMN_NAME: string }>];
-
-  if (rows.length === 0) {
-    await pool.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
   }
 }
 
@@ -178,91 +167,91 @@ function getSqliteDatabase() {
   return sqliteDatabase;
 }
 
-async function ensureMySqlSchema() {
-  if (!isMySqlConfigured()) {
+async function ensurePostgresSchema() {
+  if (!isSupabaseConfigured()) {
     return;
   }
 
-  if (!mySqlReady) {
-    mySqlReady = (async () => {
-      const pool = getMySqlPool();
+  if (!postgresReady) {
+    postgresReady = (async () => {
+      const pool = getPostgresPool();
       await pool.query(`
         CREATE TABLE IF NOT EXISTS shipments (
-          ref VARCHAR(64) PRIMARY KEY,
-          airWaybill VARCHAR(64) NOT NULL,
-          customer VARCHAR(191) NOT NULL,
-          customerEmail VARCHAR(191) NOT NULL,
-          customerPhone VARCHAR(64) NOT NULL,
-          origin VARCHAR(191) NOT NULL,
-          destination VARCHAR(191) NOT NULL,
-          eta VARCHAR(191) NOT NULL,
-          status VARCHAR(32) NOT NULL,
-          packageType VARCHAR(191) NOT NULL,
-          paymentMethod VARCHAR(32) NOT NULL,
-          lastUpdate TEXT NOT NULL,
-          createdAt VARCHAR(64) NOT NULL,
-          details LONGTEXT NULL
+          ref TEXT PRIMARY KEY,
+          "airWaybill" TEXT NOT NULL,
+          customer TEXT NOT NULL,
+          "customerEmail" TEXT NOT NULL,
+          "customerPhone" TEXT NOT NULL,
+          origin TEXT NOT NULL,
+          destination TEXT NOT NULL,
+          eta TEXT NOT NULL,
+          status TEXT NOT NULL,
+          "packageType" TEXT NOT NULL,
+          "paymentMethod" TEXT NOT NULL,
+          "lastUpdate" TEXT NOT NULL,
+          "createdAt" TEXT NOT NULL,
+          details TEXT
         )
       `);
       await pool.query(`
         CREATE TABLE IF NOT EXISTS payment_requests (
-          id VARCHAR(64) PRIMARY KEY,
-          customer VARCHAR(191) NOT NULL,
-          customerEmail VARCHAR(191) NOT NULL,
-          customerPhone VARCHAR(64) NOT NULL,
-          origin VARCHAR(191) NOT NULL,
-          destination VARCHAR(191) NOT NULL,
-          eta VARCHAR(191) NOT NULL,
-          packageType VARCHAR(191) NOT NULL,
-          paymentMethod VARCHAR(32) NOT NULL,
-          serviceTitle VARCHAR(191) NOT NULL,
-          amount DECIMAL(14,2) NOT NULL,
-          status VARCHAR(32) NOT NULL,
-          createdAt VARCHAR(64) NOT NULL,
+          id TEXT PRIMARY KEY,
+          customer TEXT NOT NULL,
+          "customerEmail" TEXT NOT NULL,
+          "customerPhone" TEXT NOT NULL,
+          origin TEXT NOT NULL,
+          destination TEXT NOT NULL,
+          eta TEXT NOT NULL,
+          "packageType" TEXT NOT NULL,
+          "paymentMethod" TEXT NOT NULL,
+          "serviceTitle" TEXT NOT NULL,
+          amount NUMERIC(14, 2) NOT NULL,
+          status TEXT NOT NULL,
+          "createdAt" TEXT NOT NULL,
           note TEXT NOT NULL,
-          paymentProofName VARCHAR(191) NOT NULL,
-          paymentProofType VARCHAR(128) NOT NULL,
-          paymentProofDataUrl LONGTEXT NOT NULL,
-          shipmentRef VARCHAR(64) NULL,
-          airWaybill VARCHAR(64) NULL,
-          details LONGTEXT NULL
+          "paymentProofName" TEXT NOT NULL,
+          "paymentProofType" TEXT NOT NULL,
+          "paymentProofDataUrl" TEXT NOT NULL,
+          "shipmentRef" TEXT,
+          "airWaybill" TEXT,
+          details TEXT
         )
       `);
       await pool.query(`
         CREATE TABLE IF NOT EXISTS customer_updates (
-          id VARCHAR(64) PRIMARY KEY,
-          customerEmail VARCHAR(191) NOT NULL,
-          title VARCHAR(191) NOT NULL,
+          id TEXT PRIMARY KEY,
+          "customerEmail" TEXT NOT NULL,
+          title TEXT NOT NULL,
           message TEXT NOT NULL,
-          createdAt VARCHAR(64) NOT NULL,
-          \`read\` TINYINT(1) NOT NULL DEFAULT 0
+          "createdAt" TEXT NOT NULL,
+          "read" BOOLEAN NOT NULL DEFAULT FALSE
         )
       `);
       await pool.query(`
         CREATE TABLE IF NOT EXISTS site_content (
-          id VARCHAR(64) PRIMARY KEY,
-          payload LONGTEXT NOT NULL,
-          updatedAt VARCHAR(64) NOT NULL
+          id TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          "updatedAt" TEXT NOT NULL
         )
       `);
       await pool.query(`
         CREATE TABLE IF NOT EXISTS contact_requests (
-          id VARCHAR(64) PRIMARY KEY,
-          name VARCHAR(191) NOT NULL,
-          email VARCHAR(191) NOT NULL,
-          phone VARCHAR(64) NOT NULL,
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          email TEXT NOT NULL,
+          phone TEXT NOT NULL,
           message TEXT NOT NULL,
-          createdAt VARCHAR(64) NOT NULL,
-          \`read\` TINYINT(1) NOT NULL DEFAULT 0
+          "createdAt" TEXT NOT NULL,
+          "read" BOOLEAN NOT NULL DEFAULT FALSE
         )
       `);
-      await ensureMySqlColumn("shipments", "details", "LONGTEXT NULL");
-      await ensureMySqlColumn("payment_requests", "details", "LONGTEXT NULL");
-      await seedMySqlDatabase();
+      await pool.query('ALTER TABLE shipments ADD COLUMN IF NOT EXISTS details TEXT');
+      await pool.query('ALTER TABLE payment_requests ADD COLUMN IF NOT EXISTS details TEXT');
+      await seedPostgresDatabase();
     })();
   }
 
-  await mySqlReady;
+  await postgresReady;
 }
 
 function seedSqliteDatabase(db: SqliteDatabase) {
@@ -307,17 +296,17 @@ function seedSqliteDatabase(db: SqliteDatabase) {
   }
 }
 
-async function seedMySqlDatabase() {
-  const pool = getMySqlPool();
-  const [shipmentRows] = (await pool.query("SELECT COUNT(*) as count FROM shipments")) as unknown as [Array<{ count: number }>];
+async function seedPostgresDatabase() {
+  const pool = getPostgresPool();
+  const shipmentCountResult = await pool.query<{ count: string }>("SELECT COUNT(*) as count FROM shipments");
 
-  if (Number(shipmentRows[0]?.count ?? 0) === 0) {
+  if (Number(shipmentCountResult.rows[0]?.count ?? 0) === 0) {
     for (const shipment of seedShipments) {
       await pool.query(
         `INSERT INTO shipments (
-          ref, airWaybill, customer, customerEmail, customerPhone, origin, destination, eta,
-          status, packageType, paymentMethod, lastUpdate, createdAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ref, "airWaybill", customer, "customerEmail", "customerPhone", origin, destination, eta,
+          status, "packageType", "paymentMethod", "lastUpdate", "createdAt"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
         [
           shipment.ref,
           shipment.airWaybill,
@@ -337,12 +326,10 @@ async function seedMySqlDatabase() {
     }
   }
 
-  const [contentRows] = (await pool.query("SELECT id FROM site_content WHERE id = 'default' LIMIT 1")) as unknown as [
-    Array<{ id: string }>
-  ];
+  const contentResult = await pool.query<{ id: string }>('SELECT id FROM site_content WHERE id = $1 LIMIT 1', ["default"]);
 
-  if (contentRows.length === 0) {
-    await pool.query("INSERT INTO site_content (id, payload, updatedAt) VALUES (?, ?, ?)", [
+  if (contentResult.rows.length === 0) {
+    await pool.query('INSERT INTO site_content (id, payload, "updatedAt") VALUES ($1, $2, $3)', [
       "default",
       JSON.stringify(defaultSiteContent),
       new Date().toISOString()
@@ -374,50 +361,48 @@ function mapContactRequest(row: ContactRequestRow): ContactRequest {
   };
 }
 
-async function listShipments() {
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
-    const [rows] = (await pool.query("SELECT * FROM shipments ORDER BY ref DESC")) as unknown as [ShipmentRow[]];
-    return rows.map(mapShipment);
+async function listShipments(): Promise<Shipment[]> {
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    const result = await pool.query<ShipmentRow>('SELECT * FROM shipments ORDER BY ref DESC');
+    return result.rows.map(mapShipment);
   }
 
   const db = getSqliteDatabase();
   return (db.prepare("SELECT * FROM shipments ORDER BY ref DESC").all() as ShipmentRow[]).map(mapShipment);
 }
 
-async function listPaymentRequests() {
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
-    const [rows] = (await pool.query("SELECT * FROM payment_requests ORDER BY id DESC")) as unknown as [PaymentRequestRow[]];
-    return rows.map(mapPaymentRequest);
+async function listPaymentRequests(): Promise<PaymentRequest[]> {
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    const result = await pool.query<PaymentRequestRow>('SELECT * FROM payment_requests ORDER BY id DESC');
+    return result.rows.map(mapPaymentRequest);
   }
 
   const db = getSqliteDatabase();
   return (db.prepare("SELECT * FROM payment_requests ORDER BY id DESC").all() as PaymentRequestRow[]).map(mapPaymentRequest);
 }
 
-async function listCustomerUpdates() {
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
-    const [rows] = (await pool.query("SELECT * FROM customer_updates ORDER BY id DESC")) as unknown as [CustomerUpdateRow[]];
-    return rows.map(mapCustomerUpdate);
+async function listCustomerUpdates(): Promise<CustomerUpdate[]> {
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    const result = await pool.query<CustomerUpdateRow>('SELECT * FROM customer_updates ORDER BY id DESC');
+    return result.rows.map(mapCustomerUpdate);
   }
 
   const db = getSqliteDatabase();
   return (db.prepare("SELECT * FROM customer_updates ORDER BY id DESC").all() as CustomerUpdateRow[]).map(mapCustomerUpdate);
 }
 
-async function listContactRequests() {
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
-    const [rows] = (await pool.query("SELECT * FROM contact_requests ORDER BY createdAt DESC, id DESC")) as unknown as [
-      ContactRequestRow[]
-    ];
-    return rows.map(mapContactRequest);
+async function listContactRequests(): Promise<ContactRequest[]> {
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    const result = await pool.query<ContactRequestRow>('SELECT * FROM contact_requests ORDER BY "createdAt" DESC, id DESC');
+    return result.rows.map(mapContactRequest);
   }
 
   const db = getSqliteDatabase();
@@ -456,12 +441,12 @@ async function insertCustomerUpdate(input: Pick<CustomerUpdate, "customerEmail" 
     read: false
   };
 
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
     await pool.query(
-      "INSERT INTO customer_updates (id, customerEmail, title, message, createdAt, `read`) VALUES (?, ?, ?, ?, ?, ?)",
-      [update.id, update.customerEmail, update.title, update.message, update.createdAt, 0]
+      'INSERT INTO customer_updates (id, "customerEmail", title, message, "createdAt", "read") VALUES ($1, $2, $3, $4, $5, $6)',
+      [update.id, update.customerEmail, update.title, update.message, update.createdAt, false]
     );
     return update;
   }
@@ -490,12 +475,12 @@ async function insertContactRequest(input: ContactRequestInput) {
     read: false
   };
 
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
     await pool.query(
-      "INSERT INTO contact_requests (id, name, email, phone, message, createdAt, `read`) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [request.id, request.name, request.email, request.phone, request.message, request.createdAt, 0]
+      'INSERT INTO contact_requests (id, name, email, phone, message, "createdAt", "read") VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [request.id, request.name, request.email, request.phone, request.message, request.createdAt, false]
     );
     return request;
   }
@@ -533,14 +518,14 @@ async function insertShipment(input: BookingInput) {
     details: input.details ?? null
   };
 
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
     await pool.query(
       `INSERT INTO shipments (
-        ref, airWaybill, customer, customerEmail, customerPhone, origin, destination, eta,
-        status, packageType, paymentMethod, lastUpdate, createdAt, details
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ref, "airWaybill", customer, "customerEmail", "customerPhone", origin, destination, eta,
+        status, "packageType", "paymentMethod", "lastUpdate", "createdAt", details
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [
         shipment.ref,
         shipment.airWaybill,
@@ -645,15 +630,15 @@ export async function submitTransferRequestRecord(input: TransferRequestInput) {
     details: input.details ?? null
   };
 
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
     await pool.query(
       `INSERT INTO payment_requests (
-        id, customer, customerEmail, customerPhone, origin, destination, eta, packageType,
-        paymentMethod, serviceTitle, amount, status, createdAt, note,
-        paymentProofName, paymentProofType, paymentProofDataUrl, shipmentRef, airWaybill, details
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, customer, "customerEmail", "customerPhone", origin, destination, eta, "packageType",
+        "paymentMethod", "serviceTitle", amount, status, "createdAt", note,
+        "paymentProofName", "paymentProofType", "paymentProofDataUrl", "shipmentRef", "airWaybill", details
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
       [
         request.id,
         request.customer,
@@ -733,10 +718,10 @@ export async function approvePaymentRequestRecord(requestId: string) {
     details: request.details ?? null
   });
 
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
-    await pool.query("UPDATE payment_requests SET status = ?, shipmentRef = ?, airWaybill = ? WHERE id = ?", [
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    await pool.query('UPDATE payment_requests SET status = $1, "shipmentRef" = $2, "airWaybill" = $3 WHERE id = $4', [
       "Approved",
       shipment.ref,
       shipment.airWaybill,
@@ -772,10 +757,10 @@ export async function rejectPaymentRequestRecord(
     return null;
   }
 
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
-    await pool.query("UPDATE payment_requests SET status = ?, note = ? WHERE id = ?", ["Rejected", reason, requestId]);
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    await pool.query("UPDATE payment_requests SET status = $1, note = $2 WHERE id = $3", ["Rejected", reason, requestId]);
   } else {
     const db = getSqliteDatabase();
     db.prepare("UPDATE payment_requests SET status = ?, note = ? WHERE id = ?").run("Rejected", reason, requestId);
@@ -803,15 +788,15 @@ export async function updatePaymentRequestRecord(requestId: string, updates: Par
     ...updates
   };
 
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
     await pool.query(
       `UPDATE payment_requests
-       SET customer = ?, customerEmail = ?, customerPhone = ?, origin = ?, destination = ?, eta = ?,
-           packageType = ?, paymentMethod = ?, serviceTitle = ?, amount = ?, status = ?, createdAt = ?,
-           note = ?, paymentProofName = ?, paymentProofType = ?, paymentProofDataUrl = ?, shipmentRef = ?, airWaybill = ?, details = ?
-       WHERE id = ?`,
+       SET customer = $1, "customerEmail" = $2, "customerPhone" = $3, origin = $4, destination = $5, eta = $6,
+           "packageType" = $7, "paymentMethod" = $8, "serviceTitle" = $9, amount = $10, status = $11, "createdAt" = $12,
+           note = $13, "paymentProofName" = $14, "paymentProofType" = $15, "paymentProofDataUrl" = $16, "shipmentRef" = $17, "airWaybill" = $18, details = $19
+       WHERE id = $20`,
       [
         next.customer,
         next.customerEmail,
@@ -888,14 +873,14 @@ export async function updateShipmentRecordByRef(ref: string, updates: Partial<Sh
     next.eta = updates.status === "Delivered" ? formatDeliveredAt() : next.eta;
   }
 
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
     await pool.query(
       `UPDATE shipments
-       SET ref = ?, airWaybill = ?, customer = ?, customerEmail = ?, customerPhone = ?, origin = ?, destination = ?,
-           eta = ?, status = ?, packageType = ?, paymentMethod = ?, lastUpdate = ?, createdAt = ?, details = ?
-       WHERE ref = ?`,
+       SET ref = $1, "airWaybill" = $2, customer = $3, "customerEmail" = $4, "customerPhone" = $5, origin = $6, destination = $7,
+           eta = $8, status = $9, "packageType" = $10, "paymentMethod" = $11, "lastUpdate" = $12, "createdAt" = $13, details = $14
+       WHERE ref = $15`,
       [
         next.ref,
         next.airWaybill,
@@ -916,7 +901,7 @@ export async function updateShipmentRecordByRef(ref: string, updates: Partial<Sh
     );
 
     if (next.ref !== ref) {
-      await pool.query("UPDATE payment_requests SET shipmentRef = ? WHERE shipmentRef = ?", [next.ref, ref]);
+      await pool.query('UPDATE payment_requests SET "shipmentRef" = $1 WHERE "shipmentRef" = $2', [next.ref, ref]);
     }
   } else {
     const db = getSqliteDatabase();
@@ -963,10 +948,10 @@ export async function markCustomerUpdateReadRecord(updateId: string, customerEma
     return null;
   }
 
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
-    await pool.query("UPDATE customer_updates SET `read` = 1 WHERE id = ?", [updateId]);
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    await pool.query('UPDATE customer_updates SET "read" = TRUE WHERE id = $1', [updateId]);
   } else {
     const db = getSqliteDatabase();
     db.prepare("UPDATE customer_updates SET read = 1 WHERE id = ?").run(updateId);
@@ -976,19 +961,17 @@ export async function markCustomerUpdateReadRecord(updateId: string, customerEma
 }
 
 export async function getSiteContentRecord() {
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
-    const [rows] = (await pool.query("SELECT payload FROM site_content WHERE id = 'default' LIMIT 1")) as unknown as [
-      Array<{ payload: string }>
-    ];
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    const result = await pool.query<{ payload: string }>('SELECT payload FROM site_content WHERE id = $1 LIMIT 1', ["default"]);
 
-    if (rows.length === 0) {
+    if (result.rows.length === 0) {
       return defaultSiteContent;
     }
 
     try {
-      return mergeSiteContent(JSON.parse(rows[0].payload) as Partial<SiteContent>);
+      return mergeSiteContent(JSON.parse(result.rows[0].payload) as Partial<SiteContent>);
     } catch {
       return defaultSiteContent;
     }
@@ -1013,13 +996,15 @@ export async function getSiteContentRecord() {
 export async function updateSiteContentRecord(content: SiteContent) {
   const next = mergeSiteContent(content);
 
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
-    await pool.query("UPDATE site_content SET payload = ?, updatedAt = ? WHERE id = 'default'", [
-      JSON.stringify(next),
-      new Date().toISOString()
-    ]);
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    await pool.query(
+      `INSERT INTO site_content (id, payload, "updatedAt")
+       VALUES ($1, $2, $3)
+       ON CONFLICT (id) DO UPDATE SET payload = EXCLUDED.payload, "updatedAt" = EXCLUDED."updatedAt"`,
+      ["default", JSON.stringify(next), new Date().toISOString()]
+    );
     return next;
   }
 
@@ -1033,13 +1018,15 @@ export async function updateSiteContentRecord(content: SiteContent) {
 }
 
 export async function resetSiteContentRecord() {
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
-    await pool.query("UPDATE site_content SET payload = ?, updatedAt = ? WHERE id = 'default'", [
-      JSON.stringify(defaultSiteContent),
-      new Date().toISOString()
-    ]);
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    await pool.query(
+      `INSERT INTO site_content (id, payload, "updatedAt")
+       VALUES ($1, $2, $3)
+       ON CONFLICT (id) DO UPDATE SET payload = EXCLUDED.payload, "updatedAt" = EXCLUDED."updatedAt"`,
+      ["default", JSON.stringify(defaultSiteContent), new Date().toISOString()]
+    );
     return defaultSiteContent;
   }
 
@@ -1070,12 +1057,12 @@ export async function updateContactRequestRecord(requestId: string, updates: Par
     email: (updates.email ?? current.email).trim().toLowerCase()
   };
 
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
     await pool.query(
-      "UPDATE contact_requests SET name = ?, email = ?, phone = ?, message = ?, createdAt = ?, `read` = ? WHERE id = ?",
-      [next.name, next.email, next.phone, next.message, next.createdAt, next.read ? 1 : 0, requestId]
+      'UPDATE contact_requests SET name = $1, email = $2, phone = $3, message = $4, "createdAt" = $5, "read" = $6 WHERE id = $7',
+      [next.name, next.email, next.phone, next.message, next.createdAt, next.read, requestId]
     );
     return next;
   }

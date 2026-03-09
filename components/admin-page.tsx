@@ -689,7 +689,7 @@ export function AdminPage() {
               <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Contact inbox</div>
               <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Website contact form submissions</h2>
             </div>
-            <div className="text-sm text-neutral-500">Every submitted contact form is stored in MySQL for follow-up.</div>
+            <div className="text-sm text-neutral-500">Every submitted contact form is stored in Supabase for follow-up.</div>
           </div>
 
           <div className="mt-6 grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">

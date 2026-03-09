@@ -4,7 +4,7 @@ import { createHash, randomUUID, scryptSync, timingSafeEqual } from "node:crypto
 import { mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { getMySqlPool, isMySqlConfigured } from "@/lib/mysql";
+import { getPostgresPool, isSupabaseConfigured } from "@/lib/supabase-postgres";
 
 type DatabaseUser = {
   id: string;
@@ -56,7 +56,7 @@ type SqliteDatabase = import("node:sqlite").DatabaseSync;
 const require = createRequire(import.meta.url);
 
 let sqliteDatabase: SqliteDatabase | null = null;
-let mySqlReady: Promise<void> | null = null;
+let postgresReady: Promise<void> | null = null;
 
 function formatTimestamp() {
   return new Date().toISOString();
@@ -103,48 +103,48 @@ function getSqliteDatabase() {
   return sqliteDatabase;
 }
 
-async function ensureMySqlSchema() {
-  if (!isMySqlConfigured()) {
+async function ensurePostgresSchema() {
+  if (!isSupabaseConfigured()) {
     return;
   }
 
-  if (!mySqlReady) {
-    mySqlReady = (async () => {
-      const pool = getMySqlPool();
+  if (!postgresReady) {
+    postgresReady = (async () => {
+      const pool = getPostgresPool();
       await pool.query(`
         CREATE TABLE IF NOT EXISTS users (
-          id VARCHAR(64) PRIMARY KEY,
-          name VARCHAR(191) NOT NULL,
-          email VARCHAR(191) NOT NULL UNIQUE,
-          phone VARCHAR(64) NOT NULL,
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          email TEXT NOT NULL UNIQUE,
+          phone TEXT NOT NULL,
           password_hash TEXT NOT NULL,
-          created_at VARCHAR(64) NOT NULL
+          created_at TEXT NOT NULL
         )
       `);
       await pool.query(`
         CREATE TABLE IF NOT EXISTS admins (
-          id VARCHAR(64) PRIMARY KEY,
-          name VARCHAR(191) NOT NULL,
-          email VARCHAR(191) NOT NULL UNIQUE,
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          email TEXT NOT NULL UNIQUE,
           password_hash TEXT NOT NULL,
-          created_at VARCHAR(64) NOT NULL
+          created_at TEXT NOT NULL
         )
       `);
       await pool.query(`
         CREATE TABLE IF NOT EXISTS sessions (
-          id VARCHAR(64) PRIMARY KEY,
-          token_hash VARCHAR(128) NOT NULL UNIQUE,
-          role VARCHAR(16) NOT NULL,
-          account_id VARCHAR(64) NOT NULL,
+          id TEXT PRIMARY KEY,
+          token_hash TEXT NOT NULL UNIQUE,
+          role TEXT NOT NULL,
+          account_id TEXT NOT NULL,
           expires_at BIGINT NOT NULL,
-          created_at VARCHAR(64) NOT NULL
+          created_at TEXT NOT NULL
         )
       `);
-      await seedDefaultAdminMySql();
+      await seedDefaultAdminPostgres();
     })();
   }
 
-  await mySqlReady;
+  await postgresReady;
 }
 
 function seedDefaultAdminSqlite(db: SqliteDatabase) {
@@ -170,14 +170,14 @@ function seedDefaultAdminSqlite(db: SqliteDatabase) {
   );
 }
 
-async function seedDefaultAdminMySql() {
-  const pool = getMySqlPool();
-  const [rows] = (await pool.query("SELECT id FROM admins WHERE email = ? LIMIT 1", [DEFAULT_ADMIN_EMAIL.toLowerCase()])) as unknown as [
-    Array<{ id: string }>
-  ];
+async function seedDefaultAdminPostgres() {
+  const pool = getPostgresPool();
+  const existingAdmin = await pool.query<{ id: string }>("SELECT id FROM admins WHERE email = $1 LIMIT 1", [
+    DEFAULT_ADMIN_EMAIL.toLowerCase()
+  ]);
 
-  if (rows.length > 0) {
-    await pool.query("UPDATE admins SET name = ?, password_hash = ? WHERE email = ?", [
+  if (existingAdmin.rows.length > 0) {
+    await pool.query("UPDATE admins SET name = $1, password_hash = $2 WHERE email = $3", [
       "Swift Signate Admin",
       hashPassword(DEFAULT_ADMIN_PASSWORD),
       DEFAULT_ADMIN_EMAIL.toLowerCase()
@@ -185,7 +185,7 @@ async function seedDefaultAdminMySql() {
     return;
   }
 
-  await pool.query("INSERT INTO admins (id, name, email, password_hash, created_at) VALUES (?, ?, ?, ?, ?)", [
+  await pool.query("INSERT INTO admins (id, name, email, password_hash, created_at) VALUES ($1, $2, $3, $4, $5)", [
     randomUUID(),
     "Swift Signate Admin",
     DEFAULT_ADMIN_EMAIL.toLowerCase(),
@@ -218,14 +218,12 @@ function hashToken(token: string) {
 export async function createUser(input: { name: string; email: string; phone: string; password: string }) {
   const normalizedEmail = input.email.trim().toLowerCase();
 
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
-    const [existingRows] = (await pool.query("SELECT id FROM users WHERE email = ? LIMIT 1", [normalizedEmail])) as unknown as [
-      Array<{ id: string }>
-    ];
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    const existingUser = await pool.query<{ id: string }>("SELECT id FROM users WHERE email = $1 LIMIT 1", [normalizedEmail]);
 
-    if (existingRows.length > 0) {
+    if (existingUser.rows.length > 0) {
       return {
         ok: false as const,
         message: "An account already exists with that email address."
@@ -241,7 +239,7 @@ export async function createUser(input: { name: string; email: string; phone: st
       created_at: formatTimestamp()
     };
 
-    await pool.query("INSERT INTO users (id, name, email, phone, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)", [
+    await pool.query("INSERT INTO users (id, name, email, phone, password_hash, created_at) VALUES ($1, $2, $3, $4, $5, $6)", [
       user.id,
       user.name,
       user.email,
@@ -295,13 +293,11 @@ export async function createUser(input: { name: string; email: string; phone: st
 export async function authenticateUser(input: { email: string; password: string }) {
   const normalizedEmail = input.email.trim().toLowerCase();
 
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
-    const [rows] = (await pool.query("SELECT * FROM users WHERE email = ? LIMIT 1", [normalizedEmail])) as unknown as [
-      DatabaseUser[]
-    ];
-    const user = rows[0];
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    const result = await pool.query<DatabaseUser>("SELECT * FROM users WHERE email = $1 LIMIT 1", [normalizedEmail]);
+    const user = result.rows[0];
 
     if (!user || !verifyPassword(input.password, user.password_hash)) {
       return null;
@@ -323,13 +319,11 @@ export async function authenticateUser(input: { email: string; password: string 
 export async function authenticateAdmin(input: { email: string; password: string }) {
   const normalizedEmail = input.email.trim().toLowerCase();
 
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
-    const [rows] = (await pool.query("SELECT * FROM admins WHERE email = ? LIMIT 1", [normalizedEmail])) as unknown as [
-      DatabaseAdmin[]
-    ];
-    const admin = rows[0];
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    const result = await pool.query<DatabaseAdmin>("SELECT * FROM admins WHERE email = $1 LIMIT 1", [normalizedEmail]);
+    const admin = result.rows[0];
 
     if (!admin || !verifyPassword(input.password, admin.password_hash)) {
       return null;
@@ -362,17 +356,13 @@ export async function createSession(role: "user" | "admin", accountId: string) {
   const token = randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
   session.token_hash = hashToken(token);
 
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
-    await pool.query("INSERT INTO sessions (id, token_hash, role, account_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)", [
-      session.id,
-      session.token_hash,
-      session.role,
-      session.account_id,
-      session.expires_at,
-      session.created_at
-    ]);
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    await pool.query(
+      "INSERT INTO sessions (id, token_hash, role, account_id, expires_at, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+      [session.id, session.token_hash, session.role, session.account_id, session.expires_at, session.created_at]
+    );
   } else {
     const db = getSqliteDatabase();
     db.prepare("INSERT INTO sessions (id, token_hash, role, account_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(
@@ -394,10 +384,10 @@ export async function createSession(role: "user" | "admin", accountId: string) {
 export async function deleteSession(token: string) {
   const tokenHash = hashToken(token);
 
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
-    await pool.query("DELETE FROM sessions WHERE token_hash = ?", [tokenHash]);
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    await pool.query("DELETE FROM sessions WHERE token_hash = $1", [tokenHash]);
     return;
   }
 
@@ -408,24 +398,20 @@ export async function deleteSession(token: string) {
 export async function getSessionByToken(token: string): Promise<DatabaseSessionResult> {
   const tokenHash = hashToken(token);
 
-  if (isMySqlConfigured()) {
-    await ensureMySqlSchema();
-    const pool = getMySqlPool();
-    await pool.query("DELETE FROM sessions WHERE expires_at <= ?", [Date.now()]);
-    const [sessions] = (await pool.query("SELECT * FROM sessions WHERE token_hash = ? LIMIT 1", [tokenHash])) as unknown as [
-      DatabaseSession[]
-    ];
-    const session = sessions[0];
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    await pool.query("DELETE FROM sessions WHERE expires_at <= $1", [Date.now()]);
+    const sessionResult = await pool.query<DatabaseSession>("SELECT * FROM sessions WHERE token_hash = $1 LIMIT 1", [tokenHash]);
+    const session = sessionResult.rows[0];
 
     if (!session) {
       return null;
     }
 
     if (session.role === "user") {
-      const [users] = (await pool.query("SELECT * FROM users WHERE id = ? LIMIT 1", [session.account_id])) as unknown as [
-        DatabaseUser[]
-      ];
-      const user = users[0];
+      const userResult = await pool.query<DatabaseUser>("SELECT * FROM users WHERE id = $1 LIMIT 1", [session.account_id]);
+      const user = userResult.rows[0];
 
       if (!user) {
         return null;
@@ -438,10 +424,8 @@ export async function getSessionByToken(token: string): Promise<DatabaseSessionR
       };
     }
 
-    const [admins] = (await pool.query("SELECT * FROM admins WHERE id = ? LIMIT 1", [session.account_id])) as unknown as [
-      DatabaseAdmin[]
-    ];
-    const admin = admins[0];
+    const adminResult = await pool.query<DatabaseAdmin>("SELECT * FROM admins WHERE id = $1 LIMIT 1", [session.account_id]);
+    const admin = adminResult.rows[0];
 
     if (!admin) {
       return null;
