@@ -51,6 +51,8 @@ type MetricCardProps = {
   delay?: number;
 };
 
+type AdminWorkspaceTab = "transfers" | "contacts" | "shipments" | "content";
+
 function MetricCard({ label, value, detail, delay = 0 }: MetricCardProps) {
   return (
     <motion.div
@@ -294,6 +296,7 @@ export function AdminPage() {
   const [selectedContactRequestId, setSelectedContactRequestId] = useState("");
   const [contactRequestDraft, setContactRequestDraft] = useState<ContactRequest | null>(null);
   const [contactRequestMessage, setContactRequestMessage] = useState("");
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<AdminWorkspaceTab>("transfers");
 
   useEffect(() => {
     if (!selectedShipmentRef && shipments.length > 0) {
@@ -339,6 +342,29 @@ export function AdminPage() {
     updates: customerUpdates.filter((update) => !update.read).length,
     contactRequests: contactRequests.filter((request) => !request.read).length
   };
+
+  const workspaceTabs: Array<{ id: AdminWorkspaceTab; label: string; detail: string }> = [
+    {
+      id: "transfers",
+      label: "Transfer approvals",
+      detail: `${pendingTransfers.length} pending`
+    },
+    {
+      id: "contacts",
+      label: "Contact inbox",
+      detail: `${contactRequests.length} records`
+    },
+    {
+      id: "shipments",
+      label: "Shipment editor",
+      detail: `${shipments.length} shipments`
+    },
+    {
+      id: "content",
+      label: "Content studio",
+      detail: "Media and copy"
+    }
+  ];
 
   const handleShipmentField = <K extends keyof Shipment>(field: K, value: Shipment[K]) => {
     setShipmentDraft((current) => (current ? { ...current, [field]: value } : current));
@@ -639,6 +665,34 @@ export function AdminPage() {
           />
         </div>
 
+        <div className="rounded-[24px] border border-black/8 bg-white p-3 shadow-[0_10px_18px_rgba(140,110,78,0.05)]">
+          <div className="flex flex-wrap gap-3">
+            {workspaceTabs.map((tab) => {
+              const selected = tab.id === activeWorkspaceTab;
+
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveWorkspaceTab(tab.id)}
+                  className={[
+                    "flex min-w-[180px] flex-1 flex-col rounded-[18px] border px-4 py-3 text-left transition-colors md:min-w-[210px]",
+                    selected
+                      ? "border-orange-300 bg-orange-50/50 shadow-[0_8px_16px_rgba(140,110,78,0.08)]"
+                      : "border-black/8 bg-[#fcfaf7] hover:border-orange-200"
+                  ].join(" ")}
+                >
+                  <span className={selected ? "text-sm font-semibold text-neutral-950" : "text-sm font-medium text-neutral-700"}>
+                    {tab.label}
+                  </span>
+                  <span className="mt-1 text-xs uppercase tracking-[0.16em] text-neutral-500">{tab.detail}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {activeWorkspaceTab === "transfers" && (
         <motion.section
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
@@ -884,7 +938,9 @@ export function AdminPage() {
             </div>
           </div>
         </motion.section>
+        )}
 
+        {activeWorkspaceTab === "contacts" && (
         <motion.section
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1014,7 +1070,9 @@ export function AdminPage() {
             </div>
           </div>
         </motion.section>
+        )}
 
+        {activeWorkspaceTab === "shipments" && (
         <motion.section
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1213,7 +1271,9 @@ export function AdminPage() {
             </div>
           </div>
         </motion.section>
+        )}
 
+        {activeWorkspaceTab === "content" && (
         <motion.section
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1655,6 +1715,7 @@ export function AdminPage() {
             )}
           </div>
         </motion.section>
+        )}
       </div>
     </ConsoleShell>
   );

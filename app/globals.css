@@ -166,15 +166,15 @@ a {
 }
 
 .discover-signal {
-  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.22);
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.28);
 }
 
 .discover-signal__glow {
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 0 24px rgba(249, 115, 22, 0.26),
-    0 14px 34px rgba(0, 0, 0, 0.18);
   animation: discoverGlow 2.8s ease-in-out infinite;
+  filter:
+    drop-shadow(0 0 10px rgba(249, 115, 22, 0.32))
+    drop-shadow(0 0 22px rgba(249, 115, 22, 0.24))
+    drop-shadow(0 8px 18px rgba(0, 0, 0, 0.18));
 }
 
 .discover-signal__arrows {
@@ -234,16 +234,16 @@ a {
 @keyframes discoverGlow {
   0%,
   100% {
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.08),
-      0 0 18px rgba(249, 115, 22, 0.18),
-      0 12px 28px rgba(0, 0, 0, 0.16);
+    filter:
+      drop-shadow(0 0 8px rgba(249, 115, 22, 0.22))
+      drop-shadow(0 0 16px rgba(249, 115, 22, 0.18))
+      drop-shadow(0 8px 16px rgba(0, 0, 0, 0.16));
   }
   50% {
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.14),
-      0 0 34px rgba(249, 115, 22, 0.34),
-      0 18px 42px rgba(0, 0, 0, 0.22);
+    filter:
+      drop-shadow(0 0 14px rgba(249, 115, 22, 0.32))
+      drop-shadow(0 0 28px rgba(249, 115, 22, 0.28))
+      drop-shadow(0 12px 24px rgba(0, 0, 0, 0.2));
   }
 }
 

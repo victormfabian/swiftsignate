@@ -290,6 +290,7 @@ function TrustCard({
 
 export function LandingPage() {
   const [activeHeroPanel, setActiveHeroPanel] = useState<"book" | "track" | null>(null);
+  const [showDiscoverCue, setShowDiscoverCue] = useState(true);
   const heroPanelRef = useRef<HTMLElement | null>(null);
   const servicesSectionRef = useRef<HTMLElement | null>(null);
   const { content } = useSiteContentStore();
@@ -306,6 +307,17 @@ export function LandingPage() {
     return () => window.cancelAnimationFrame(frameId);
   }, [activeHeroPanel]);
 
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowDiscoverCue(window.scrollY < 28 && !activeHeroPanel);
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [activeHeroPanel]);
+
   const scrollToServices = () => {
     servicesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -314,7 +326,8 @@ export function LandingPage() {
     <main className="relative min-h-screen overflow-x-hidden bg-[#f7f1e9] text-neutral-900">
       <section className="relative min-h-[100svh] overflow-hidden">
         <HeroBackground source={content.hero.backgroundImage} />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.16),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.14),transparent_24%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.34)_0%,rgba(0,0,0,0.18)_36%,rgba(0,0,0,0.34)_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.1),transparent_24%)]" />
         <div className="absolute inset-x-0 top-0 z-20 px-4 pt-4 md:px-6">
           <Navigation />
         </div>
@@ -355,28 +368,30 @@ export function LandingPage() {
             </motion.div>
           </div>
         </div>
-        <motion.button
-          type="button"
-          onClick={scrollToServices}
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-          className="discover-signal absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2 text-white md:bottom-8"
-        >
-          <span className="text-[10px] font-medium uppercase tracking-[0.34em] text-white/82 md:text-[11px]">
-            Discover More
-          </span>
-          <span className="discover-signal__glow flex h-16 w-16 items-center justify-center rounded-full border border-white/20 bg-white/6 backdrop-blur-sm md:h-20 md:w-20">
-            <span className="discover-signal__arrows flex flex-col items-center justify-center text-white/90">
-              <svg viewBox="0 0 24 24" className="h-4 w-4 md:h-5 md:w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="m7 9 5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <svg viewBox="0 0 24 24" className="-mt-1 h-4 w-4 md:h-5 md:w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="m7 9 5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </span>
-          </span>
-        </motion.button>
+        <AnimatePresence>
+          {showDiscoverCue && (
+            <motion.button
+              type="button"
+              onClick={scrollToServices}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12 }}
+              transition={{ duration: 0.28 }}
+              className="discover-signal absolute bottom-2 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center justify-center text-white md:bottom-3"
+            >
+              <span className="discover-signal__glow flex flex-col items-center justify-center text-white/92">
+                <span className="discover-signal__arrows flex flex-col items-center justify-center">
+                  <svg viewBox="0 0 24 24" className="h-5 w-5 md:h-6 md:w-6" fill="none" stroke="currentColor" strokeWidth="1.9">
+                    <path d="m7 9 5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <svg viewBox="0 0 24 24" className="-mt-2 h-5 w-5 md:h-6 md:w-6" fill="none" stroke="currentColor" strokeWidth="1.9">
+                    <path d="m7 9 5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+              </span>
+            </motion.button>
+          )}
+        </AnimatePresence>
       </section>
 
       <AnimatePresence initial={false}>
