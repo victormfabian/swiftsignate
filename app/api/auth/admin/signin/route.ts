@@ -52,7 +52,8 @@ export async function POST(request: Request) {
     setSessionCookie(response, await issueAdminSession(admin.id));
 
     return response;
-  } catch {
+  } catch (error) {
+    console.error("Admin auth failed", error);
     return NextResponse.json(
       {
         ok: false,

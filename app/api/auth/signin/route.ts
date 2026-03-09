@@ -53,7 +53,8 @@ export async function POST(request: Request) {
     setSessionCookie(response, await issueUserSession(user.id));
 
     return response;
-  } catch {
+  } catch (error) {
+    console.error("Auth signin failed", error);
     return NextResponse.json(
       {
         ok: false,

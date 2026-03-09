@@ -5,7 +5,14 @@ import { Pool, type QueryResultRow } from "pg";
 let pool: Pool | null = null;
 
 function getConnectionString() {
-  return process.env.SUPABASE_DB_URL || process.env.DATABASE_URL || "";
+  const rawValue = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL || "";
+
+  return rawValue
+    .trim()
+    .replace(/^SUPABASE_DB_URL=/i, "")
+    .replace(/^DATABASE_URL=/i, "")
+    .replace(/^['"]/, "")
+    .replace(/['"]$/, "");
 }
 
 export function isSupabaseConfigured() {
