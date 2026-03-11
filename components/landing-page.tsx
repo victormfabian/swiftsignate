@@ -130,7 +130,7 @@ function ServiceCard({
         />
 
         <div className={["flex flex-1 flex-col", stacked ? "p-7 lg:p-10" : "p-6 md:p-8"].join(" ")}>
-          <h3 className={["font-semibold text-neutral-950", stacked ? "text-3xl" : "text-2xl"].join(" ")}>
+          <h3 className={["font-semibold text-neutral-950", stacked ? "text-2xl md:text-3xl" : "text-2xl"].join(" ")}>
             {card.title}
           </h3>
           <p className={["flex-1 text-neutral-600", stacked ? "mt-4 max-w-2xl text-lg leading-8" : "mt-4 text-base leading-7"].join(" ")}>
@@ -191,6 +191,7 @@ export function LandingPage() {
   const [showDiscoverCue, setShowDiscoverCue] = useState(true);
   const heroPanelRef = useRef<HTMLElement | null>(null);
   const servicesSectionRef = useRef<HTMLElement | null>(null);
+  const shouldRevealHeroPanelRef = useRef(false);
   const { content } = useSiteContentStore();
 
   useEffect(() => {
@@ -204,8 +205,34 @@ export function LandingPage() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, [activeHeroPanel]);
 
+  useEffect(() => {
+    if (!activeHeroPanel || !heroPanelRef.current || !shouldRevealHeroPanelRef.current) {
+      return;
+    }
+
+    let firstFrame = 0;
+    let secondFrame = 0;
+
+    firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        heroPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        shouldRevealHeroPanelRef.current = false;
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
+  }, [activeHeroPanel]);
+
   const scrollToServices = () => {
     servicesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const handleTrackPanelOpen = () => {
+    shouldRevealHeroPanelRef.current = true;
+    setActiveHeroPanel("track");
   };
 
   return (
@@ -234,7 +261,7 @@ export function LandingPage() {
               </p>
               <div className="mx-auto mt-10 grid max-w-[280px] grid-cols-1 gap-3 sm:mx-0 sm:max-w-[360px] sm:grid-cols-2">
                 <GlowButton
-                  onClick={() => setActiveHeroPanel("track")}
+                  onClick={handleTrackPanelOpen}
                   label={content.hero.trackButtonLabel}
                   shape="parallelogram"
                   className="w-full justify-center px-5"
@@ -285,7 +312,7 @@ export function LandingPage() {
             exit={{ opacity: 0, y: -20, scale: 0.97 }}
             transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
             style={{ transformOrigin: "50% 0%" }}
-            className="relative z-20 -mt-28 px-4 pb-8 md:-mt-32 md:px-6 md:pb-10"
+            className="relative z-20 -mt-28 scroll-mt-4 px-4 pb-8 md:-mt-32 md:px-6 md:pb-10"
           >
             <div className="mx-auto w-full max-w-6xl overflow-hidden rounded-[32px] bg-white shadow-[0_32px_80px_rgba(23,20,18,0.18)]">
               <DashboardPage
