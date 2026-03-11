@@ -115,11 +115,7 @@ function ServiceCard({
   stacked?: boolean;
 }) {
   return (
-    <motion.article
-      initial={{ opacity: 0, y: 22 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.25 }}
-      transition={{ duration: 0.45, delay: index * 0.08 }}
+    <article
       className={[
         "overflow-hidden rounded-[28px] border border-black/8 bg-white shadow-[0_18px_40px_rgba(140,110,78,0.08)]",
         stacked ? "sticky text-center lg:text-left" : "flex h-full flex-col text-center md:text-left"
@@ -142,7 +138,7 @@ function ServiceCard({
           </p>
         </div>
       </div>
-    </motion.article>
+    </article>
   );
 }
 
@@ -290,7 +286,7 @@ export function LandingPage() {
             exit={{ opacity: 0, y: -20, scale: 0.97 }}
             transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
             style={{ transformOrigin: "50% 0%" }}
-            className="relative z-20 -mt-16 px-4 pb-8 md:-mt-20 md:px-6 md:pb-10"
+            className="relative z-20 -mt-28 px-4 pb-8 md:-mt-32 md:px-6 md:pb-10"
           >
             <div className="mx-auto w-full max-w-6xl overflow-hidden rounded-[32px] bg-white shadow-[0_32px_80px_rgba(23,20,18,0.18)]">
               <DashboardPage
