@@ -9,10 +9,19 @@ import { IconGlyph } from "@/components/icon-glyph";
 import { Navigation } from "@/components/navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { useSiteContentStore } from "@/components/site-content-store";
+import { buildWhatsAppHref } from "@/lib/contact-links";
 import { mediaSourceToBackground, resolveMediaSource } from "@/lib/media-utils";
 
 function CardIcon({ icon }: { icon: string }) {
   return <IconGlyph icon={icon} className="h-10 w-10" />;
+}
+
+function QuoteMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" aria-hidden="true" className={className} fill="currentColor">
+      <path d="M9.563 8.469l-0.813-1.25c-5.625 3.781-8.75 8.375-8.75 12.156 0 3.656 2.688 5.375 4.969 5.375 2.875 0 4.906-2.438 4.906-5 0-2.156-1.375-4-3.219-4.688-0.531-0.188-1.031-0.344-1.031-1.25 0-1.156 0.844-2.875 3.938-5.344zM21.969 8.469l-0.813-1.25c-5.563 3.781-8.75 8.375-8.75 12.156 0 3.656 2.75 5.375 5.031 5.375 2.906 0 4.969-2.438 4.969-5 0-2.156-1.406-4-3.313-4.688-0.531-0.188-1-0.344-1-1.25 0-1.156 0.875-2.875 3.875-5.344z" />
+    </svg>
+  );
 }
 
 function MediaTile({
@@ -115,6 +124,46 @@ function HeroBackground({ source }: { source: string }) {
   );
 }
 
+const whyUsQuote = {
+  text: "Move with confidence. Every shipment carries a promise, and every promise deserves safe delivery.",
+  attribution: "Swift Signate"
+};
+
+function WhyUsQuoteBlock({
+  className = "",
+  textClassName = "mx-auto max-w-[32rem] text-[1.7rem] font-medium italic leading-[1.55] tracking-[-0.04em] text-neutral-950"
+}: {
+  className?: string;
+  textClassName?: string;
+}) {
+  return (
+    <div className={["relative text-center", className].join(" ")}>
+      <QuoteMark className="pointer-events-none absolute left-0 top-1 h-14 w-14 text-neutral-300" />
+      <div className="relative">
+        <p className={textClassName}>{whyUsQuote.text}</p>
+        <div className="mt-5 text-xs font-medium uppercase tracking-[0.18em] text-neutral-500">{whyUsQuote.attribution}</div>
+      </div>
+    </div>
+  );
+}
+
+function GuidanceMessage({ href, className = "" }: { href: string; className?: string }) {
+  return (
+    <div className={["text-sm leading-7 text-neutral-600", className].join(" ")}>
+      For more guidance, chat us up on{" "}
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="font-medium text-ember underline decoration-orange-200 underline-offset-4"
+      >
+        WhatsApp
+      </a>
+      .
+    </div>
+  );
+}
+
 function ServiceCard({
   card,
   index,
@@ -204,6 +253,7 @@ export function LandingPage() {
   const servicesSectionRef = useRef<HTMLElement | null>(null);
   const shouldRevealHeroPanelRef = useRef(false);
   const { content } = useSiteContentStore();
+  const whatsappSupportHref = buildWhatsAppHref(content.navigation.whatsappHref);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -362,14 +412,17 @@ export function LandingPage() {
       </section>
 
       <section id="why-us" className="bg-[#fffaf4] px-4 py-16 md:px-6 md:py-20">
-        <div className="mx-auto grid w-full max-w-6xl gap-10 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">
-          <div className="overflow-hidden rounded-[32px] border border-black/8 bg-white shadow-[0_18px_40px_rgba(140,110,78,0.08)]">
-            <MediaTile
-              source={content.whyUs.image}
-              title={content.whyUs.title}
-              tintedOverlay
-              className="h-[320px] w-full md:h-[420px]"
-            />
+        <div className="mx-auto grid w-full max-w-6xl gap-10 lg:grid-cols-[0.95fr_1.05fr] lg:items-stretch">
+          <div className="flex flex-col gap-6 lg:h-full">
+            <div className="overflow-hidden rounded-[32px] border border-black/8 bg-white shadow-[0_18px_40px_rgba(140,110,78,0.08)]">
+              <MediaTile
+                source={content.whyUs.image}
+                title={content.whyUs.title}
+                tintedOverlay
+                className="h-[320px] w-full md:h-[420px]"
+              />
+            </div>
+            <WhyUsQuoteBlock className="hidden px-3 pb-1 pt-8 lg:mt-auto lg:block" />
           </div>
 
           <div className="text-center lg:text-left">
@@ -389,19 +442,25 @@ export function LandingPage() {
                   mobileOnly
                 />
               ))}
+              <WhyUsQuoteBlock
+                className="mt-2 px-2 pb-1 pt-8"
+                textClassName="mx-auto max-w-[22rem] text-[1.3rem] font-medium italic leading-[1.55] tracking-[-0.03em] text-neutral-950"
+              />
             </div>
 
             <div className="mt-8 hidden gap-4 md:grid md:auto-rows-fr">
               {content.whyUs.points.map((point, index) => (
                 <div
                   key={point.title}
-                  className="flex h-full flex-col rounded-[24px] border border-black/8 bg-white p-5 text-center shadow-[0_14px_30px_rgba(140,110,78,0.06)] lg:text-left"
+                  className="flex h-full flex-col rounded-[24px] border border-black/8 bg-white p-5 text-center shadow-[0_14px_30px_rgba(140,110,78,0.06)] md:flex-row md:items-start md:gap-5 md:text-left"
                 >
-                  <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-[28px] bg-orange-50 text-ember lg:mx-0">
+                  <div className="mx-auto mb-4 flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-[28px] bg-orange-50 text-ember md:mx-0 md:mb-0 md:h-16 md:w-16 md:rounded-[22px]">
                     <CardIcon icon={point.icon} />
                   </div>
-                  <h3 className="text-lg font-semibold text-neutral-950">{point.title}</h3>
-                  <p className="mt-2 flex-1 text-base leading-7 text-neutral-600">{point.copy}</p>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-neutral-950">{point.title}</h3>
+                    <p className="mt-2 text-base leading-7 text-neutral-600">{point.copy}</p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -411,13 +470,14 @@ export function LandingPage() {
 
       <section id="tracking" className="bg-[#171412] px-4 py-16 md:px-6 md:py-20">
         <div className="mx-auto w-full max-w-6xl rounded-[36px] bg-white px-6 py-12 text-neutral-900 shadow-[0_18px_40px_rgba(140,110,78,0.08)] md:px-10 md:py-14">
-          <div className="grid gap-10 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">
-            <div className="text-center lg:text-left">
+          <div className="grid gap-10 lg:grid-cols-[0.95fr_1.05fr] lg:items-stretch">
+            <div className="flex flex-col text-center lg:h-full lg:text-left">
               <div className="text-sm font-medium uppercase tracking-[0.18em] text-ember">{content.process.eyebrow}</div>
               <h2 className="mt-4 text-3xl font-semibold tracking-[-0.03em] text-neutral-950 md:text-5xl">
                 {content.process.title}
               </h2>
               <p className="mt-5 max-w-xl text-lg leading-8 text-neutral-600">{content.process.copy}</p>
+              <GuidanceMessage href={whatsappSupportHref} className="mt-8 hidden max-w-md lg:mt-auto lg:block" />
             </div>
 
             <div className="grid gap-4 md:auto-rows-fr">
@@ -435,6 +495,7 @@ export function LandingPage() {
                   <p className="mt-2 flex-1 text-base leading-7 text-neutral-600">{step.copy}</p>
                 </motion.div>
               ))}
+              <GuidanceMessage href={whatsappSupportHref} className="mt-1 lg:hidden" />
             </div>
           </div>
         </div>
