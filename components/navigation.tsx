@@ -148,13 +148,12 @@ export function Navigation() {
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="contact-modal-title"
-                className="max-h-[calc(100vh-32px)] w-full max-w-xl overflow-y-auto rounded-[28px] bg-[#fffaf5] p-5 text-neutral-900 shadow-[0_24px_60px_rgba(0,0,0,0.22)] md:p-6"
+                className="max-h-[calc(100vh-24px)] w-full max-w-lg overflow-y-auto rounded-[26px] bg-[#fffaf5] p-4 text-neutral-900 shadow-[0_24px_60px_rgba(0,0,0,0.22)] md:p-5"
                 onClick={(event) => event.stopPropagation()}
               >
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium uppercase tracking-[0.18em] text-ember">{content.navigation.contactModalEyebrow}</div>
-                    <h2 id="contact-modal-title" className="mt-2 text-xl font-semibold tracking-[-0.03em] text-neutral-950 md:text-2xl">
+                    <h2 id="contact-modal-title" className="text-lg font-semibold tracking-[-0.03em] text-neutral-950 md:text-xl">
                       {content.navigation.contactModalTitle}
                     </h2>
                   </div>
@@ -162,7 +161,7 @@ export function Navigation() {
                   <button
                     type="button"
                     onClick={() => setContactOpen(false)}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-neutral-700 transition-colors hover:bg-orange-50 hover:text-ember"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-neutral-700 transition-colors hover:bg-orange-50 hover:text-ember"
                   >
                     <span className="sr-only">Close contact form</span>
                     <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -172,64 +171,62 @@ export function Navigation() {
                 </div>
 
                 <form
-                  className="mt-5 space-y-3"
+                  className="mt-4 grid grid-cols-2 gap-2.5 sm:gap-3"
                   onSubmit={handleContactSubmit}
                 >
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <label className="block">
-                      <span className="mb-1.5 block text-sm font-medium text-neutral-700">Full Name</span>
-                      <input
-                        type="text"
-                        required
-                        value={form.name}
-                        onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                        className="h-11 w-full rounded-2xl border border-black/10 bg-white px-4 text-sm text-neutral-900 outline-none transition-colors focus:border-orange-300"
-                        placeholder="Your full name"
-                      />
-                    </label>
-
-                    <label className="block">
-                      <span className="mb-1.5 block text-sm font-medium text-neutral-700">Email Address</span>
-                      <input
-                        type="email"
-                        required
-                        value={form.email}
-                        onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-                        className="h-11 w-full rounded-2xl border border-black/10 bg-white px-4 text-sm text-neutral-900 outline-none transition-colors focus:border-orange-300"
-                        placeholder="name@example.com"
-                      />
-                    </label>
-                  </div>
+                  <label className="col-span-2 block">
+                    <span className="mb-1 block text-[13px] font-medium text-neutral-700">Full Name</span>
+                    <input
+                      type="text"
+                      required
+                      value={form.name}
+                      onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                      className="h-10 w-full rounded-2xl border border-black/10 bg-white px-3.5 text-sm text-neutral-900 outline-none transition-colors focus:border-orange-300"
+                      placeholder="Your full name"
+                    />
+                  </label>
 
                   <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-neutral-700">Phone Number</span>
+                    <span className="mb-1 block text-[13px] font-medium text-neutral-700">Email Address</span>
+                    <input
+                      type="email"
+                      required
+                      value={form.email}
+                      onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                      className="h-10 w-full rounded-2xl border border-black/10 bg-white px-3.5 text-sm text-neutral-900 outline-none transition-colors focus:border-orange-300"
+                      placeholder="name@example.com"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1 block text-[13px] font-medium text-neutral-700">Phone Number</span>
                     <input
                       type="tel"
                       required
                       value={form.phone}
                       onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
-                      className="h-11 w-full rounded-2xl border border-black/10 bg-white px-4 text-sm text-neutral-900 outline-none transition-colors focus:border-orange-300"
+                      className="h-10 w-full rounded-2xl border border-black/10 bg-white px-3.5 text-sm text-neutral-900 outline-none transition-colors focus:border-orange-300"
                       placeholder="+234 800 000 0000"
                     />
                   </label>
 
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-neutral-700">Message</span>
+                  <label className="col-span-2 block">
+                    <span className="mb-1 block text-[13px] font-medium text-neutral-700">Message</span>
                     <textarea
                       required
-                      rows={4}
+                      rows={3}
                       value={form.message}
                       onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))}
-                      className="w-full rounded-[24px] border border-black/10 bg-white px-4 py-3 text-sm text-neutral-900 outline-none transition-colors focus:border-orange-300"
+                      className="w-full rounded-[22px] border border-black/10 bg-white px-3.5 py-2.5 text-sm text-neutral-900 outline-none transition-colors focus:border-orange-300"
                       placeholder="Tell us what you want to ship or the help you need."
                     />
                   </label>
 
-                  <div className="flex flex-col gap-2 border-t border-black/8 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="col-span-2 flex flex-col gap-2 border-t border-black/8 pt-3 sm:flex-row sm:items-center sm:justify-between">
                     <button
                       type="submit"
                       disabled={submitting}
-                      className="inline-flex min-h-[46px] items-center justify-center rounded-full bg-neutral-950 px-5 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-70"
+                      className="inline-flex min-h-[42px] items-center justify-center rounded-full bg-neutral-950 px-5 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       {submitting ? "Sending..." : content.navigation.contactModalSubmitLabel}
                     </button>
@@ -242,14 +239,14 @@ export function Navigation() {
                   </div>
                 </form>
 
-                <div className="mt-5 border-t border-black/8 pt-5">
-                  <div className="text-sm font-medium text-neutral-700">Prefer a direct channel?</div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <div className="mt-4 border-t border-black/8 pt-4">
+                  <div className="text-[13px] font-medium text-neutral-700">Prefer a direct channel?</div>
+                  <div className="mt-2.5 grid grid-cols-2 gap-2">
                     <a
                       href={whatsappHref}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full bg-[#25D366] px-4 text-sm font-medium text-white transition-opacity hover:opacity-92"
+                      className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-full bg-[#25D366] px-3 text-sm font-medium text-white transition-opacity hover:opacity-92"
                       >
                       <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
                         <path d="M19.05 4.93A9.94 9.94 0 0 0 12 2a10 10 0 0 0-8.66 15l-1.3 4.75 4.87-1.28A10 10 0 1 0 19.05 4.93ZM12 20.15a8.1 8.1 0 0 1-4.13-1.13l-.3-.18-2.9.76.78-2.82-.2-.3A8.15 8.15 0 1 1 12 20.15Zm4.47-6.1c-.24-.12-1.4-.69-1.62-.77-.22-.08-.38-.12-.54.12-.16.24-.62.77-.77.93-.14.16-.28.18-.52.06-.24-.12-1-.36-1.9-1.15-.7-.62-1.18-1.4-1.32-1.63-.14-.24-.02-.37.1-.49.1-.1.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.54-1.3-.74-1.78-.2-.47-.4-.4-.54-.4h-.46c-.16 0-.42.06-.64.3-.22.24-.84.82-.84 2 0 1.18.86 2.32.98 2.48.12.16 1.7 2.6 4.12 3.64.58.25 1.03.4 1.39.5.58.18 1.1.15 1.52.09.46-.07 1.4-.57 1.6-1.12.2-.55.2-1.02.14-1.12-.06-.1-.22-.16-.46-.28Z" />
@@ -258,7 +255,7 @@ export function Navigation() {
                     </a>
                     <a
                       href={emailHref}
-                      className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-black/10 bg-white px-4 text-sm font-medium text-neutral-900 transition-colors hover:border-orange-300 hover:text-ember"
+                      className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-full border border-black/10 bg-white px-3 text-sm font-medium text-neutral-900 transition-colors hover:border-orange-300 hover:text-ember"
                     >
                       <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
                         <path d="M4 7.5h16v9H4z" />

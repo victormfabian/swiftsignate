@@ -234,20 +234,19 @@ export function LandingPage() {
               </p>
               <div className="mx-auto mt-10 grid max-w-[280px] grid-cols-1 gap-3 sm:mx-0 sm:max-w-[360px] sm:grid-cols-2">
                 <GlowButton
-                  href="/dashboard/book"
-                  label={content.hero.bookButtonLabel}
+                  onClick={() => setActiveHeroPanel("track")}
+                  label={content.hero.trackButtonLabel}
                   shape="parallelogram"
                   className="w-full justify-center px-5"
+                  ariaControls="hero-service-modal"
+                  ariaExpanded={activeHeroPanel === "track"}
                 />
-                <button
-                  type="button"
-                  onClick={() => setActiveHeroPanel("track")}
-                  aria-controls="hero-service-modal"
-                  aria-expanded={activeHeroPanel === "track"}
+                <Link
+                  href="/dashboard/book"
                   className="slant-button inline-flex min-h-[52px] w-full items-center justify-center border border-white/24 bg-black/24 px-5 py-3 text-sm font-medium text-white backdrop-blur-sm transition-colors hover:bg-black/32"
                 >
-                  <strong>{content.hero.trackButtonLabel}</strong>
-                </button>
+                  <strong>{content.hero.bookButtonLabel}</strong>
+                </Link>
               </div>
             </motion.div>
           </div>

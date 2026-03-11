@@ -203,15 +203,15 @@ function SectionBadge({ label }: { label: string }) {
 function TrackingStatusMarker({ complete }: { complete: boolean }) {
   if (complete) {
     return (
-      <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-white shadow-[0_10px_20px_rgba(16,185,129,0.24)]">
-        <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+      <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+        <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
           <path d="m4.5 10 3.4 3.4 7.6-8" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </span>
     );
   }
 
-  return <span className="inline-flex h-10 w-10 rounded-full border border-black/10 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]" />;
+  return <span className="inline-flex h-6 w-6 shrink-0 rounded-full border-2 border-emerald-200 bg-white" />;
 }
 
 function AssistantLane({
@@ -2014,7 +2014,7 @@ export function DashboardPage({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -12 }}
       transition={{ duration: 0.25 }}
-      className="grid gap-8 p-5 md:p-8 lg:grid-cols-[0.8fr_1.2fr]"
+      className="grid gap-8 p-5 md:p-8 lg:grid-cols-[minmax(320px,0.72fr)_minmax(0,1.28fr)]"
     >
       <div className="rounded-[28px] bg-white p-6 shadow-[0_14px_28px_rgba(140,110,78,0.06)]">
         <SectionBadge label="Tracking" />
@@ -2058,7 +2058,7 @@ export function DashboardPage({
               </span>
             </div>
 
-            <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
               <div className="rounded-[20px] bg-[#fcfaf7] p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
                 <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Route</div>
                 <div className="mt-2 text-sm font-medium text-neutral-900">
@@ -2068,14 +2068,6 @@ export function DashboardPage({
               <div className="rounded-[20px] bg-[#fcfaf7] p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
                 <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Estimated delivery</div>
                 <div className="mt-2 text-sm font-medium text-neutral-900">{trackingResult.eta}</div>
-              </div>
-              <div className="rounded-[20px] bg-[#fcfaf7] p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
-                <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Clearance fee</div>
-                <div className="mt-2 text-sm font-medium text-neutral-900">
-                  {typeof trackingResult.clearanceFee === "number"
-                    ? new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(trackingResult.clearanceFee)
-                    : "Pending"}
-                </div>
               </div>
             </div>
 
@@ -2320,7 +2312,7 @@ export function DashboardPage({
                 href={modalDashboardHref}
                 className="rounded-full border border-orange-200 bg-orange-50/50 px-4 py-2 text-sm font-medium text-ember transition-colors hover:border-orange-300"
               >
-                Open dashboard
+                Dashboard
               </Link>
               {isUserAuthenticated && (
                 <>
@@ -2510,7 +2502,7 @@ export function DashboardPage({
                         href={modalDashboardHref}
                         className="inline-flex min-h-[48px] items-center justify-center rounded-[12px] border border-black/10 bg-white px-5 text-sm font-medium text-neutral-700"
                       >
-                        Open dashboard
+                        Dashboard
                       </Link>
                     )}
                   </div>

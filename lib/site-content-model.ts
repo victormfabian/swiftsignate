@@ -65,7 +65,6 @@ export type SiteContent = {
   navigation: {
     logoMedia: string;
     contactButtonLabel: string;
-    contactModalEyebrow: string;
     contactModalTitle: string;
     contactModalSubmitLabel: string;
     whatsappHref: string;
@@ -360,7 +359,6 @@ export const defaultSiteContent: SiteContent = {
   navigation: {
     logoMedia: "",
     contactButtonLabel: "Get in Contact",
-    contactModalEyebrow: "Contact Swift Signate",
     contactModalTitle: "Tell us about your shipment or support request.",
     contactModalSubmitLabel: "Send Request",
     whatsappHref: "",

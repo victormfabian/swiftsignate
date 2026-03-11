@@ -3365,14 +3365,6 @@ export function AdminPage() {
                   />
                 </label>
                 <label>
-                  <span className={labelClassName}>Modal eyebrow</span>
-                  <input
-                    value={contentDraft.navigation.contactModalEyebrow}
-                    onChange={(event) => handleContentField("navigation", "contactModalEyebrow", event.target.value)}
-                    className={fieldClassName}
-                  />
-                </label>
-                <label>
                   <span className={labelClassName}>Modal submit label</span>
                   <input
                     value={contentDraft.navigation.contactModalSubmitLabel}
