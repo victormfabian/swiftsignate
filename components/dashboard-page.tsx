@@ -8,6 +8,7 @@ import { AuthPanel } from "@/components/auth-panel";
 import { useAuthSession } from "@/components/auth-session";
 import { IconGlyph } from "@/components/icon-glyph";
 import { LogoMark } from "@/components/logo-mark";
+import { SiteFooter } from "@/components/site-footer";
 import { getShipmentSteps, useShipmentStore, type Shipment } from "@/components/shipment-store";
 import { useSiteContentStore } from "@/components/site-content-store";
 import { defaultBookingConfig } from "@/lib/site-content-model";
@@ -118,6 +119,20 @@ function cloneContactDetails(details: ContactDetails): ContactDetails {
   };
 }
 
+function resolveClientPhoneValue(...values: Array<string | null | undefined>) {
+  for (const candidate of values) {
+    const normalized = candidate?.trim() ?? "";
+
+    if (!normalized || normalized.includes("@")) {
+      continue;
+    }
+
+    return normalized;
+  }
+
+  return "";
+}
+
 function isPartyDetailsComplete(details: ContactDetails, options?: { requirePostalCode?: boolean }) {
   const requiredFields = [details.name, details.email, details.phone, details.address1, details.city];
 
@@ -185,6 +200,20 @@ function SectionBadge({ label }: { label: string }) {
   return <div className="text-xs font-medium uppercase tracking-[0.18em] text-ember">{label}</div>;
 }
 
+function TrackingStatusMarker({ complete }: { complete: boolean }) {
+  if (complete) {
+    return (
+      <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-white shadow-[0_10px_20px_rgba(16,185,129,0.24)]">
+        <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+          <path d="m4.5 10 3.4 3.4 7.6-8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+    );
+  }
+
+  return <span className="inline-flex h-10 w-10 rounded-full border border-black/10 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]" />;
+}
+
 function AssistantLane({
   children,
   laneRef
@@ -195,7 +224,7 @@ function AssistantLane({
   return (
     <div
       ref={laneRef}
-      className="flex items-stretch gap-4 overflow-x-auto px-1 pb-3 snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+      className="flex items-stretch gap-4 overflow-x-auto px-1 pb-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
     >
       {children}
     </div>
@@ -203,13 +232,13 @@ function AssistantLane({
 }
 
 const laneCardClassName =
-  "w-[calc(100vw-2.75rem)] max-w-[420px] shrink-0 snap-start rounded-[24px] border border-black/8 bg-white p-5 shadow-[0_10px_24px_rgba(140,110,78,0.05)] md:min-w-[340px]";
+  "w-[calc(100vw-2.75rem)] max-w-[420px] shrink-0 snap-start rounded-[24px] bg-white p-5 shadow-[0_10px_24px_rgba(140,110,78,0.05)] md:min-w-[340px]";
 const laneWideCardClassName =
-  "w-[calc(100vw-2.75rem)] shrink-0 snap-start rounded-[24px] border border-black/8 bg-white p-5 shadow-[0_10px_24px_rgba(140,110,78,0.05)] md:min-w-[680px] md:max-w-[920px]";
+  "w-[calc(100vw-2.75rem)] shrink-0 snap-start rounded-[24px] bg-white p-5 shadow-[0_10px_24px_rgba(140,110,78,0.05)] md:min-w-[680px] md:max-w-[920px]";
 const laneInputClassName =
   "h-13 w-full rounded-[16px] border border-black/10 bg-white px-4 text-[15px] text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-orange-300";
 const contactCardClassName =
-  "rounded-[24px] border border-black/8 bg-white p-5 shadow-[0_10px_18px_rgba(140,110,78,0.05)]";
+  "rounded-[24px] bg-white p-5 shadow-[0_10px_18px_rgba(140,110,78,0.05)]";
 const contactFieldClassName =
   "h-12 w-full rounded-[16px] border border-black/8 bg-white px-4 text-sm text-neutral-900 outline-none placeholder:text-neutral-400 transition-colors focus:border-orange-300";
 const contactReadonlyFieldClassName =
@@ -220,39 +249,6 @@ const laneChoiceClass = (selected: boolean) =>
     "rounded-full border px-4 py-2 text-sm font-medium transition-colors",
     selected ? "border-orange-300 bg-orange-50 text-ember" : "border-black/8 bg-white text-neutral-700 hover:border-orange-200"
   ].join(" ");
-
-function scrollLaneToChild(lane: HTMLDivElement | null, index: number) {
-  if (!lane) {
-    return;
-  }
-
-  const target = lane.children.item(index) as HTMLElement | null;
-  if (!target) {
-    return;
-  }
-
-  lane.scrollTo({
-    left: target.offsetLeft - lane.offsetLeft,
-    behavior: "smooth"
-  });
-}
-
-function scrollStepperToStep(container: HTMLDivElement | null, step: BookingStep) {
-  if (!container) {
-    return;
-  }
-
-  const target = container.querySelector(`[data-step="${step}"]`) as HTMLElement | null;
-  if (!target) {
-    return;
-  }
-
-  const nextLeft = Math.max(target.offsetLeft - (container.clientWidth - target.clientWidth) / 2, 0);
-  container.scrollTo({
-    left: nextLeft,
-    behavior: "smooth"
-  });
-}
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-NG", {
@@ -499,8 +495,6 @@ export function DashboardPage({
   const packageLaneRef = useRef<HTMLDivElement | null>(null);
   const fullStepperRef = useRef<HTMLDivElement | null>(null);
   const compactStepperRef = useRef<HTMLDivElement | null>(null);
-  const previousRouteProgressRef = useRef(0);
-  const previousPackageProgressRef = useRef(0);
   const requiresUserAuth = activeTab !== "track";
 
   const activeStepIndex = trackingResult
@@ -537,36 +531,20 @@ export function DashboardPage({
     packageEntries.every((entry) => entry.weight.trim());
   const activeWorkflowRequest =
     activeRequestWorkflowId ? visiblePaymentRequests.find((request) => request.id === activeRequestWorkflowId) ?? null : null;
-  const routeProgressIndex =
-    bookingForm.fromCountry &&
-    bookingForm.fromCity &&
-    bookingForm.toCountry &&
-    bookingForm.toCity &&
-    bookingForm.residential !== null
-      ? 3
-      : bookingForm.shipperType && bookingForm.fromCountry && bookingForm.fromCity
-        ? 2
-        : bookingForm.shipperType
-          ? 1
-          : 0;
-  const packageProgressIndex =
-    packageEntries.length > 0 && bookingForm.higherLiability !== null && bookingForm.packagingType
-      ? 3
-      : bookingForm.higherLiability !== null && bookingForm.packagingType
-        ? 2
-        : bookingForm.packagingType
-          ? 1
-          : 0;
+  const modalDashboardHref =
+    activeTab === "book"
+      ? "/dashboard/book"
+      : trackingQuery
+        ? `/dashboard/track?ref=${encodeURIComponent(trackingQuery)}`
+        : "/dashboard/track";
   const pageTitle =
     activeTab === "book" ? content.customerPages.bookTitle : content.customerPages.trackTitle;
   const pageCopy =
-    activeTab === "book"
-      ? "Submit your shipment inquiry step by step. Swift Signate will review it, email your quote, and issue tracking after payment confirmation."
-      : content.customerPages.trackCopy;
-  const pageHelper =
-    activeTab === "book"
-      ? "Partner inquiries are reviewed by Swift Signate before payment details and shipment tracking are issued."
-      : content.customerPages.trackHelper;
+    !isLockedToSingleTab
+      ? "Manage bookings, requests, and tracking from one workspace."
+      : activeTab === "book"
+        ? "Submit your shipment request."
+        : "Track an active shipment.";
 
   useEffect(() => {
     setActiveTab(lockedTab ?? initialTab);
@@ -639,71 +617,15 @@ export function DashboardPage({
     setSavedCustomerEmail(currentUser.email);
     setProfileForm((current) => ({
       ...current,
-      phone: current.phone || currentUser.phone
+      phone: resolveClientPhoneValue(current.phone, currentUser.phone)
     }));
     setSenderDetails((current) => ({
       ...current,
       company: current.company || currentUser.name,
       email: current.email || currentUser.email,
-      phone: current.phone || currentUser.phone
+      phone: resolveClientPhoneValue(current.phone, currentUser.phone)
     }));
   }, [currentUser]);
-
-  useEffect(() => {
-    previousRouteProgressRef.current = 0;
-    previousPackageProgressRef.current = 0;
-  }, [bookingStep]);
-
-  useEffect(() => {
-    if (bookingStep !== 1 || routeProgressIndex <= previousRouteProgressRef.current) {
-      previousRouteProgressRef.current = routeProgressIndex;
-      return;
-    }
-
-    if (typeof window === "undefined" || window.innerWidth >= 768 || !routeLaneRef.current) {
-      previousRouteProgressRef.current = routeProgressIndex;
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      scrollLaneToChild(routeLaneRef.current, routeProgressIndex);
-    });
-
-    previousRouteProgressRef.current = routeProgressIndex;
-    return () => window.cancelAnimationFrame(frameId);
-  }, [bookingStep, routeProgressIndex]);
-
-  useEffect(() => {
-    if (bookingStep !== 2 || packageProgressIndex <= previousPackageProgressRef.current) {
-      previousPackageProgressRef.current = packageProgressIndex;
-      return;
-    }
-
-    if (typeof window === "undefined" || window.innerWidth >= 768 || !packageLaneRef.current) {
-      previousPackageProgressRef.current = packageProgressIndex;
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      scrollLaneToChild(packageLaneRef.current, packageProgressIndex);
-    });
-
-    previousPackageProgressRef.current = packageProgressIndex;
-    return () => window.cancelAnimationFrame(frameId);
-  }, [bookingStep, packageProgressIndex]);
-
-  useEffect(() => {
-    if (activeTab !== "book" || typeof window === "undefined") {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      scrollStepperToStep(fullStepperRef.current, bookingStep);
-      scrollStepperToStep(compactStepperRef.current, bookingStep);
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [activeTab, bookingStep]);
 
   const updateBookingField = <K extends keyof BookingForm>(field: K, value: BookingForm[K]) => {
     setBookingForm((current) => {
@@ -803,7 +725,7 @@ export function DashboardPage({
             ...EMPTY_CONTACT_DETAILS,
             name: currentUser.name,
             email: currentUser.email,
-            phone: currentUser.phone,
+            phone: resolveClientPhoneValue(currentUser.phone),
             company: currentUser.name
           }
         : EMPTY_CONTACT_DETAILS
@@ -1101,7 +1023,7 @@ export function DashboardPage({
     const requestPayload = {
       customer: customerName,
       customerEmail,
-      customerPhone: (currentUser?.phone ?? senderDetails.phone).trim(),
+      customerPhone: resolveClientPhoneValue(currentUser?.phone, senderDetails.phone),
       origin: `${bookingForm.fromCity}, ${bookingForm.fromCountry}`,
       destination: `${bookingForm.toCity}, ${bookingForm.toCountry}`,
       eta: "Timeline will be confirmed by Swift Signate",
@@ -1155,9 +1077,9 @@ export function DashboardPage({
       ...cloneContactDetails(EMPTY_CONTACT_DETAILS),
       company: currentUser?.name ?? "",
       email: currentUser?.email ?? "",
-      phone: currentUser?.phone ?? "",
       city: request.details?.route.fromCity ?? "",
-      ...(request.details?.sender ?? {})
+      ...(request.details?.sender ?? {}),
+      phone: resolveClientPhoneValue(request.details?.sender?.phone, request.customerPhone, currentUser?.phone)
     });
     setActiveRequestReceiver({
       ...cloneContactDetails(EMPTY_CONTACT_DETAILS),
@@ -1295,7 +1217,7 @@ export function DashboardPage({
       <AuthPanel
         role="user"
         mode={isModal ? "modal" : "page"}
-        title="Partner sign in"
+        title="Partner log in"
         nextPath="/dashboard/book"
         onSuccess={() => {
           void refreshSession();
@@ -1347,63 +1269,54 @@ export function DashboardPage({
     <div className="space-y-6">
       <AssistantLane laneRef={routeLaneRef}>
         <div className={laneCardClassName}>
-          <div className="text-base font-semibold text-neutral-950">Partner account</div>
-          <div className="mt-4 rounded-[20px] border border-orange-200 bg-orange-50/50 px-4 py-4 text-sm leading-6 text-neutral-700">
-            You are submitting this request as an approved business partner. Start by choosing the origin for this shipment.
+          <div className="text-base font-semibold text-neutral-950">Origin</div>
+          <div className="mt-4 flex flex-wrap gap-3">
+            {pickupSuggestions.map((country) => (
+              <button
+                key={country}
+                type="button"
+                onClick={() => updateBookingField("fromCountry", country)}
+                className={laneChoiceClass(bookingForm.fromCountry === country)}
+              >
+                {country}
+              </button>
+            ))}
           </div>
-        </div>
-
-        {bookingForm.shipperType && (
-          <div className={laneCardClassName}>
-            <div className="text-base font-semibold text-neutral-950">Origin</div>
-            <div className="mt-4 flex flex-wrap gap-3">
-              {pickupSuggestions.map((country) => (
-                <button
-                  key={country}
-                  type="button"
-                  onClick={() => updateBookingField("fromCountry", country)}
-                  className={laneChoiceClass(bookingForm.fromCountry === country)}
-                >
-                  {country}
-                </button>
-              ))}
-            </div>
-            <select
-              value={bookingForm.fromCountry}
-              onChange={(event) => updateBookingField("fromCountry", event.target.value)}
-              className={`${laneInputClassName} mt-4`}
-            >
-              <option value="">Select origin country</option>
-              {countryOptions.map((country) => (
-                <option key={country} value={country}>
-                  {country}
-                </option>
-              ))}
-            </select>
-            {bookingForm.fromCountry && (
-              <div className="mt-4 space-y-4">
-                <div className="flex flex-wrap gap-3">
-                  {(bookingConfig.routeCountries.find((country) => country.name === bookingForm.fromCountry)?.cities ?? []).map((city) => (
-                    <button
-                      key={city}
-                      type="button"
-                      onClick={() => updateBookingField("fromCity", city)}
-                      className={laneChoiceClass(bookingForm.fromCity === city)}
-                    >
-                      {city}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  value={bookingForm.fromCity}
-                  onChange={(event) => updateBookingField("fromCity", event.target.value)}
-                  placeholder="Origin city"
-                  className={laneInputClassName}
-                />
+          <select
+            value={bookingForm.fromCountry}
+            onChange={(event) => updateBookingField("fromCountry", event.target.value)}
+            className={`${laneInputClassName} mt-4`}
+          >
+            <option value="">Select origin country</option>
+            {countryOptions.map((country) => (
+              <option key={country} value={country}>
+                {country}
+              </option>
+            ))}
+          </select>
+          {bookingForm.fromCountry && (
+            <div className="mt-4 space-y-4">
+              <div className="flex flex-wrap gap-3">
+                {(bookingConfig.routeCountries.find((country) => country.name === bookingForm.fromCountry)?.cities ?? []).map((city) => (
+                  <button
+                    key={city}
+                    type="button"
+                    onClick={() => updateBookingField("fromCity", city)}
+                    className={laneChoiceClass(bookingForm.fromCity === city)}
+                  >
+                    {city}
+                  </button>
+                ))}
               </div>
-            )}
-          </div>
-        )}
+              <input
+                value={bookingForm.fromCity}
+                onChange={(event) => updateBookingField("fromCity", event.target.value)}
+                placeholder="Origin city"
+                className={laneInputClassName}
+              />
+            </div>
+          )}
+        </div>
 
         {bookingForm.fromCountry && bookingForm.fromCity && (
           <div className={laneCardClassName}>
@@ -1527,6 +1440,23 @@ export function DashboardPage({
               />
             </div>
           </div>
+          {bookingForm.packagingType && (
+            <div className="mt-5 border-t border-black/8 pt-5">
+              <div className="text-sm font-medium text-neutral-800">Package count</div>
+              <div className="mt-3 flex flex-wrap gap-3">
+                {bookingConfig.packageCountSuggestions.map((count) => (
+                  <button
+                    key={count}
+                    type="button"
+                    onClick={() => syncPackageCount(count)}
+                    className={laneChoiceClass(packageEntries.length === count)}
+                  >
+                    {count} {count === 1 ? "package" : "packages"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {bookingForm.packagingType && (
@@ -1544,24 +1474,6 @@ export function DashboardPage({
                   className={laneChoiceClass(bookingForm.higherLiability === option.value)}
                 >
                   {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {bookingForm.higherLiability !== null && (
-          <div className={laneCardClassName}>
-            <div className="text-base font-semibold text-neutral-950">How many packages?</div>
-            <div className="mt-4 flex flex-wrap gap-3">
-              {bookingConfig.packageCountSuggestions.map((count) => (
-                <button
-                  key={count}
-                  type="button"
-                  onClick={() => syncPackageCount(count)}
-                  className={laneChoiceClass(packageEntries.length === count)}
-                >
-                  {count} {count === 1 ? "package" : "packages"}
                 </button>
               ))}
             </div>
@@ -1765,28 +1677,10 @@ export function DashboardPage({
     const savedContacts = requestHasCompleteContacts(request.details);
 
     return (
-      <div className="mt-5 rounded-[24px] border border-black/8 bg-[#fcfaf7] p-5 shadow-[0_10px_18px_rgba(140,110,78,0.05)]">
-        <div className="grid gap-4 md:grid-cols-3">
-          {[
-            "Save the sender and receiver contact details for this shipment.",
-            "Make payment with the account details from the Swift Signate quote email or this request card.",
-            "Upload your proof of payment so Swift Signate can confirm it and issue tracking."
-          ].map((item, index) => (
-            <div key={item} className="rounded-[18px] border border-black/8 bg-white p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-ember">Step 0{index + 1}</div>
-              <div className="mt-2 text-sm leading-6 text-neutral-700">{item}</div>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-5 grid gap-6 xl:grid-cols-2">
+      <div className="mt-5 rounded-[24px] bg-[#fcfaf7] p-5 shadow-[0_10px_18px_rgba(140,110,78,0.05)]">
+        <div className="grid gap-6 xl:grid-cols-2">
           <div className={`${contactCardClassName} flex h-full flex-col`}>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div className="text-2xl font-semibold text-neutral-950">Sender contact</div>
-              <div className="text-sm text-neutral-500">
-                {request.details?.route.fromCity || request.origin}
-              </div>
-            </div>
+            <div className="text-2xl font-semibold text-neutral-950">Sender contact</div>
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               <label className="md:col-span-2">
                 <span className={contactLabelClassName}>Full name</span>
@@ -1877,12 +1771,7 @@ export function DashboardPage({
           </div>
 
           <div className={`${contactCardClassName} flex h-full flex-col`}>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div className="text-2xl font-semibold text-neutral-950">Receiver contact</div>
-              <div className="text-sm text-neutral-500">
-                {request.details?.route.toCity || request.destination}
-              </div>
-            </div>
+            <div className="text-2xl font-semibold text-neutral-950">Receiver contact</div>
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               <label className="md:col-span-2">
                 <span className={contactLabelClassName}>Full name</span>
@@ -1973,14 +1862,7 @@ export function DashboardPage({
           </div>
         </div>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
-          <div className="rounded-[18px] border border-black/8 bg-white p-4 text-sm leading-6 text-neutral-700">
-            <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Payment reminder</div>
-            <div className="mt-2">
-              Transfer the quoted amount to the account above. After you save the contact details, upload the payment proof here so Swift Signate can confirm it and release your invoice and tracking number.
-            </div>
-          </div>
-
+        <div className="mt-5 flex justify-end">
           <div className="flex flex-col gap-3">
             <button
               type="button"
@@ -2052,7 +1934,7 @@ export function DashboardPage({
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -16 }}
             transition={{ duration: 0.24 }}
-            className={isModal ? "" : "rounded-[30px] border border-black/8 bg-white p-5 shadow-[0_18px_30px_rgba(140,110,78,0.06)] md:p-8"}
+            className={isModal ? "" : "rounded-[30px] bg-white p-5 shadow-[0_18px_30px_rgba(140,110,78,0.06)] md:p-8"}
           >
             {renderPackageAssistant()}
           </motion.div>
@@ -2068,7 +1950,7 @@ export function DashboardPage({
             className={isModal ? "" : "rounded-[30px] bg-white p-5 shadow-[0_18px_30px_rgba(140,110,78,0.06)] md:p-8"}
           >
             <div className="mx-auto grid max-w-3xl gap-5">
-              <label className="block rounded-[22px] border border-black/8 bg-white px-5 py-4 shadow-[0_10px_18px_rgba(140,110,78,0.06)]">
+              <label className="block rounded-[22px] bg-white px-5 py-4 shadow-[0_10px_18px_rgba(140,110,78,0.06)]">
                 <span className="block text-xs font-medium uppercase tracking-[0.18em] text-neutral-500">Shipping date</span>
                 <input
                   type="date"
@@ -2078,26 +1960,26 @@ export function DashboardPage({
                 />
               </label>
 
-              <div className="rounded-[24px] border border-black/8 bg-[#fcfaf7] p-5 shadow-[0_10px_18px_rgba(140,110,78,0.05)]">
+              <div className="rounded-[24px] bg-[#fcfaf7] p-5 shadow-[0_10px_18px_rgba(140,110,78,0.05)]">
                 <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Shipping summary</div>
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  <div className="rounded-[18px] border border-black/8 bg-white p-4">
+                  <div className="rounded-[18px] bg-white p-4">
                     <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Origin</div>
                     <div className="mt-2 text-base font-semibold text-neutral-950">
                       {bookingForm.fromCity}, {bookingForm.fromCountry}
                     </div>
                   </div>
-                  <div className="rounded-[18px] border border-black/8 bg-white p-4">
+                  <div className="rounded-[18px] bg-white p-4">
                     <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Destination</div>
                     <div className="mt-2 text-base font-semibold text-neutral-950">
                       {bookingForm.toCity}, {bookingForm.toCountry}
                     </div>
                   </div>
-                  <div className="rounded-[18px] border border-black/8 bg-white p-4">
+                  <div className="rounded-[18px] bg-white p-4">
                     <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Packaging</div>
                     <div className="mt-2 text-base font-semibold text-neutral-950">{bookingForm.packagingType}</div>
                   </div>
-                  <div className="rounded-[18px] border border-black/8 bg-white p-4">
+                  <div className="rounded-[18px] bg-white p-4">
                     <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Chargeable weight</div>
                     <div className="mt-2 text-base font-semibold text-neutral-950">{formatWeight(quotePricing.chargeableWeight)}</div>
                   </div>
@@ -2137,11 +2019,7 @@ export function DashboardPage({
       <div className="rounded-[28px] bg-white p-6 shadow-[0_14px_28px_rgba(140,110,78,0.06)]">
         <SectionBadge label="Tracking" />
         <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Find your shipment</h2>
-        <p className="mt-3 text-base leading-7 text-neutral-600">
-          Enter the tracking number you received after payment was confirmed.
-        </p>
-
-        <div className="mt-6 flex flex-col gap-3">
+        <div className="mt-5 flex flex-col gap-3">
           <input
             value={trackingInput}
             onChange={(event) => setTrackingInput(normalizeTrackingNumber(event.target.value))}
@@ -2160,7 +2038,7 @@ export function DashboardPage({
 
       <div className="rounded-[28px] bg-white p-6 shadow-[0_14px_28px_rgba(140,110,78,0.06)]">
         {trackingLookupLoading ? (
-          <div className="flex min-h-[320px] items-center justify-center rounded-[24px] border border-black/8 bg-white p-6 text-center text-sm leading-7 text-neutral-600">
+          <div className="flex min-h-[320px] items-center justify-center rounded-[24px] bg-[#fcfaf7] p-6 text-center text-sm leading-7 text-neutral-600">
             Checking your shipment status...
           </div>
         ) : trackingResult ? (
@@ -2169,7 +2047,6 @@ export function DashboardPage({
               <div>
                 <SectionBadge label="Shipment Details" />
                 <h2 className="mt-3 text-2xl font-semibold text-neutral-950">{trackingResult.ref}</h2>
-                <p className="mt-2 text-sm text-neutral-600">{trackingResult.customer}</p>
               </div>
               <span
                 className={[
@@ -2182,63 +2059,250 @@ export function DashboardPage({
             </div>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-3">
-              <div className="rounded-[20px] border border-black/8 bg-white p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
+              <div className="rounded-[20px] bg-[#fcfaf7] p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
                 <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Route</div>
                 <div className="mt-2 text-sm font-medium text-neutral-900">
                   {trackingResult.origin} {"->"} {trackingResult.destination}
                 </div>
               </div>
-              <div className="rounded-[20px] border border-black/8 bg-white p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
+              <div className="rounded-[20px] bg-[#fcfaf7] p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
                 <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Estimated delivery</div>
                 <div className="mt-2 text-sm font-medium text-neutral-900">{trackingResult.eta}</div>
               </div>
-              <div className="rounded-[20px] border border-black/8 bg-white p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
+              <div className="rounded-[20px] bg-[#fcfaf7] p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
                 <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Clearance fee</div>
                 <div className="mt-2 text-sm font-medium text-neutral-900">
                   {typeof trackingResult.clearanceFee === "number"
                     ? new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(trackingResult.clearanceFee)
-                    : "Will be updated by Swift Signate"}
+                    : "Pending"}
                 </div>
               </div>
             </div>
 
-            <div className="mt-4 rounded-[20px] border border-black/8 bg-white p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
+            <div className="mt-4 rounded-[20px] bg-[#fcfaf7] p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
               <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Latest update</div>
               <div className="mt-2 text-sm leading-7 text-neutral-700">{trackingResult.lastUpdate}</div>
             </div>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-5">
+            <div className="mt-6 grid gap-3 md:grid-cols-5">
               {shipmentSteps.map((step, index) => (
-                <div key={step} className="rounded-[18px] border border-black/8 bg-white p-3">
-                  <div
-                    className={[
-                      "mb-3 h-2 rounded-full",
-                      index <= activeStepIndex ? "bg-ember" : "bg-neutral-200"
-                    ].join(" ")}
-                  />
-                  <div className="text-xs font-medium text-neutral-700">{step}</div>
+                <div key={step} className="flex items-center gap-3 rounded-[18px] bg-[#fcfaf7] p-4">
+                  <TrackingStatusMarker complete={index <= activeStepIndex} />
+                  <div className="text-sm font-medium text-neutral-700">{step}</div>
                 </div>
               ))}
             </div>
           </>
         ) : !trackingLookupStarted ? (
-          <div className="flex min-h-[320px] items-center justify-center rounded-[24px] border border-black/8 bg-white p-6 text-center text-sm leading-7 text-neutral-600">
-            Enter your tracking number to view the latest shipment update.
+          <div className="flex min-h-[320px] items-center justify-center rounded-[24px] bg-[#fcfaf7] p-6 text-center text-sm leading-7 text-neutral-600">
+            Enter a tracking number to get started.
           </div>
         ) : (
-          <div className="flex min-h-[320px] items-center justify-center rounded-[24px] border border-black/8 bg-white p-6 text-center text-sm leading-7 text-neutral-600">
-            No shipment matches that number yet. Check the number and try again.
+          <div className="flex min-h-[320px] items-center justify-center rounded-[24px] bg-[#fcfaf7] p-6 text-center text-sm leading-7 text-neutral-600">
+            No shipment matches that number.
           </div>
         )}
       </div>
     </motion.div>
   );
 
+  const renderRecentShipmentsSection = () => (
+    <section className="mt-6 rounded-[28px] bg-white p-5 shadow-[0_16px_34px_rgba(140,110,78,0.06)] md:p-8">
+      <div>
+        <SectionBadge label="Recent Shipments" />
+        <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Recent shipments</h2>
+      </div>
+
+      <div className="mt-6 grid gap-4 md:grid-cols-3">
+        {shipments.slice(0, 3).map((shipment) => (
+          <button
+            key={shipment.ref}
+            type="button"
+            onClick={() => {
+              router.push(`/dashboard/track?ref=${encodeURIComponent(shipment.ref)}`);
+            }}
+            className="rounded-[24px] bg-[#fcfaf7] p-5 text-left shadow-[0_10px_18px_rgba(140,110,78,0.05)] transition-colors hover:bg-orange-50/40"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="text-sm font-semibold text-neutral-950">{shipment.ref}</div>
+              <span
+                className={[
+                  "rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em]",
+                  statusClasses(shipment.status)
+                ].join(" ")}
+              >
+                {shipment.status}
+              </span>
+            </div>
+            <div className="mt-3 text-sm text-neutral-700">{shipment.customer}</div>
+            <div className="mt-2 text-sm text-neutral-600">
+              {shipment.origin} {"->"} {shipment.destination}
+            </div>
+            <div className="mt-3 text-xs uppercase tracking-[0.18em] text-neutral-500">ETA {shipment.eta}</div>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+
+  const renderShipmentRequestsSection = () => (
+    <section className="mt-6 rounded-[28px] bg-white p-5 shadow-[0_16px_34px_rgba(140,110,78,0.06)] md:p-8">
+      <div>
+        <SectionBadge label="Shipment Requests" />
+        <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Requests and payments</h2>
+      </div>
+
+      <div className="mt-6 grid gap-4">
+        {visiblePaymentRequests.length === 0 ? (
+          <div className="rounded-[24px] bg-[#fcfaf7] p-5 text-sm leading-7 text-neutral-600">
+            No shipment requests yet.
+          </div>
+        ) : (
+          visiblePaymentRequests.map((request) => (
+            <div key={request.id} className="rounded-[24px] bg-white p-5 shadow-[0_10px_18px_rgba(140,110,78,0.05)]">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">{request.id}</div>
+                  <div className="mt-2 text-xl font-semibold text-neutral-950">{request.serviceTitle || "Shipment inquiry"}</div>
+                  <div className="mt-2 text-sm text-neutral-600">
+                    {request.origin} {"->"} {request.destination}
+                  </div>
+                </div>
+                <div className="flex flex-col items-start gap-3 sm:items-end">
+                  <span
+                    className={[
+                      "rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em]",
+                      requestStatusClasses(request.status)
+                    ].join(" ")}
+                  >
+                    {request.status}
+                  </span>
+                  <div className="text-lg font-semibold text-neutral-950">
+                    {request.status === "Inquiry received" || (request.amount <= 0 && request.status !== "Approved")
+                      ? "Quote pending"
+                      : formatCurrency(request.amount)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
+                <div className="rounded-[18px] bg-[#fcfaf7] p-4 text-sm leading-6 text-neutral-700">
+                  <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Admin note</div>
+                  <div className="mt-2">{request.note || "Waiting for Swift Signate to review your inquiry."}</div>
+                </div>
+
+                <div className="rounded-[18px] bg-[#fcfaf7] p-4 text-sm leading-6 text-neutral-700">
+                  <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Payment details</div>
+                  <div className="mt-2">{request.bankName || "Bank will appear after Swift Signate sends your quote."}</div>
+                  <div>{request.accountNumber || "Account number will appear here."}</div>
+                  <div>{request.accountName || "Account name will appear here."}</div>
+                  {request.invoiceNumber && (
+                    <div className="mt-3 rounded-[14px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-700">
+                      Invoice: {request.invoiceNumber}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  {request.status === "Quote sent" ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => openRequestWorkflow(request)}
+                        className="inline-flex min-h-[48px] items-center justify-center rounded-[12px] border border-orange-200 bg-orange-50/40 px-4 text-sm font-semibold text-ember"
+                      >
+                        {activeRequestWorkflowId === request.id ? "Hide request" : "Open request"}
+                      </button>
+                      <div className="rounded-[14px] bg-[#fcfaf7] px-4 py-3 text-sm text-neutral-600">
+                        {requestHasCompleteContacts(request.details)
+                          ? "Contacts saved. Upload payment proof."
+                          : "Save contact details to upload proof."}
+                      </div>
+                    </>
+                  ) : request.status === "Approved" && request.shipmentRef ? (
+                    <Link
+                      href={`/dashboard/track?ref=${encodeURIComponent(request.shipmentRef)}`}
+                      className="inline-flex min-h-[48px] items-center justify-center rounded-[12px] bg-ember px-4 text-sm font-semibold text-white"
+                    >
+                      Open tracking
+                    </Link>
+                  ) : (
+                    <div className="rounded-[14px] bg-[#fcfaf7] px-4 py-3 text-sm text-neutral-600">
+                      {request.status === "Inquiry received"
+                        ? "Waiting for quote"
+                        : request.status === "Payment submitted" || request.status === "Awaiting verification"
+                          ? "Payment proof uploaded"
+                          : request.status === "Rejected"
+                            ? "Check admin note"
+                            : "Awaiting update"}
+                    </div>
+                  )}
+
+                  {request.paymentProofName && (
+                    <div className="rounded-[14px] bg-[#fcfaf7] px-4 py-3 text-sm text-neutral-700">
+                      Proof: <span className="font-medium text-neutral-950">{request.paymentProofName}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {renderQuotedRequestWorkflow(request)}
+            </div>
+          ))
+        )}
+      </div>
+    </section>
+  );
+
   const ShellTag = isModal ? "div" : "main";
 
   return (
-    <ShellTag className={isModal ? "w-full overflow-x-hidden bg-white" : "min-h-screen overflow-x-hidden bg-[#f7f4ef] px-4 py-6 md:px-6 md:py-8"}>
-      <div className={isModal ? "w-full" : "mx-auto w-full max-w-6xl"}>
+    <ShellTag className={isModal ? "w-full overflow-x-hidden bg-white" : "min-h-screen overflow-x-hidden bg-[#f7f4ef]"}>
+      {!isModal && (
+        <header className="w-full border-b border-black/8 bg-white/94 shadow-[0_12px_24px_rgba(140,110,78,0.05)] backdrop-blur">
+          <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-5 md:px-6 md:py-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <Link href="/" className="flex items-center gap-3">
+                <LogoMark mediaSrc={content.navigation.logoMedia} />
+                <span className="text-sm font-medium text-neutral-700">Swift Signate</span>
+              </Link>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {isUserAuthenticated ? (
+                  <>
+                    <div className="rounded-full bg-[#fcfaf7] px-4 py-2 text-xs uppercase tracking-[0.16em] text-neutral-600">
+                      {currentUser?.name}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void signOut();
+                        router.push("/");
+                      }}
+                      className="rounded-full bg-[#fcfaf7] px-4 py-2 text-sm text-neutral-700 transition-colors hover:text-neutral-950"
+                    >
+                      Sign Out
+                    </button>
+                  </>
+                ) : (
+                  <Link
+                    href="/auth?next=%2Fdashboard%2Fbook"
+                    className="rounded-full bg-[#fcfaf7] px-4 py-2 text-sm text-neutral-700 transition-colors hover:text-neutral-950"
+                  >
+                    Log In
+                  </Link>
+                )}
+                <Link
+                  href="/"
+                  className="rounded-full bg-[#fcfaf7] px-4 py-2 text-sm text-neutral-700 transition-colors hover:text-neutral-950"
+                >
+                  Back to Home
+                </Link>
+              </div>
+            </div>
+          </div>
+        </header>
+      )}
+
+      <div className={isModal ? "w-full" : "mx-auto w-full max-w-6xl px-4 py-6 md:px-6 md:py-8"}>
         {isModal ? (
           <div
             className={[
@@ -2252,6 +2316,12 @@ export function DashboardPage({
               </div>
             )}
             <div className="order-1 flex w-full flex-wrap items-center justify-end gap-2 sm:order-2 sm:w-auto">
+              <Link
+                href={modalDashboardHref}
+                className="rounded-full border border-orange-200 bg-orange-50/50 px-4 py-2 text-sm font-medium text-ember transition-colors hover:border-orange-300"
+              >
+                Open dashboard
+              </Link>
               {isUserAuthenticated && (
                 <>
                   <div className="hidden rounded-full border border-black/8 bg-white px-4 py-2 text-xs uppercase tracking-[0.16em] text-neutral-600 md:inline-flex">
@@ -2283,46 +2353,7 @@ export function DashboardPage({
             </div>
           </div>
         ) : (
-          <header className="flex flex-col gap-5 rounded-[28px] border border-black/8 bg-white px-5 py-5 shadow-[0_16px_34px_rgba(140,110,78,0.06)] md:px-8 md:py-6">
-            <div className="flex items-center justify-between gap-4">
-              <Link href="/" className="flex items-center gap-3">
-                <LogoMark mediaSrc={content.navigation.logoMedia} />
-                <span className="text-sm font-medium text-neutral-700">Swift Signate</span>
-              </Link>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                {isUserAuthenticated ? (
-                  <>
-                    <div className="rounded-full bg-[#fcfaf7] px-4 py-2 text-xs uppercase tracking-[0.16em] text-neutral-600">
-                      Signed in as {currentUser?.name}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void signOut();
-                        router.push("/");
-                      }}
-                      className="rounded-full bg-[#fcfaf7] px-4 py-2 text-sm text-neutral-700 transition-colors hover:text-neutral-950"
-                    >
-                      Sign Out
-                    </button>
-                  </>
-                ) : (
-                  <Link
-                    href="/auth?next=%2Fdashboard%2Fbook"
-                    className="rounded-full bg-[#fcfaf7] px-4 py-2 text-sm text-neutral-700 transition-colors hover:text-neutral-950"
-                  >
-                    Sign In
-                  </Link>
-                )}
-                <Link
-                  href="/"
-                  className="rounded-full bg-[#fcfaf7] px-4 py-2 text-sm text-neutral-700 transition-colors hover:text-neutral-950"
-                >
-                  Back to Home
-                </Link>
-              </div>
-            </div>
-
+          <header className="rounded-[28px] bg-white px-5 py-5 shadow-[0_16px_34px_rgba(140,110,78,0.06)] md:px-8 md:py-6">
             <div className="max-w-3xl">
               <SectionBadge label="Customer Services" />
               <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-neutral-950 md:text-[2.8rem]">
@@ -2335,11 +2366,14 @@ export function DashboardPage({
           </header>
         )}
 
+        {!isModal && isUserAuthenticated && renderRecentShipmentsSection()}
+        {!isModal && isUserAuthenticated && renderShipmentRequestsSection()}
+
         <section
           className={
             isModal
               ? "bg-white px-5 pb-5 pt-3 md:px-8 md:pb-8 md:pt-4"
-              : "mt-6 rounded-[28px] border border-black/8 bg-white p-5 shadow-[0_16px_34px_rgba(140,110,78,0.06)] md:p-8"
+              : "mt-6 rounded-[28px] bg-white p-5 shadow-[0_16px_34px_rgba(140,110,78,0.06)] md:p-8"
           }
         >
           {!isModal && (
@@ -2370,7 +2404,6 @@ export function DashboardPage({
                   })}
                 </div>
               )}
-              <div className="max-w-xl text-sm text-neutral-500">{pageHelper}</div>
             </div>
           )}
 
@@ -2412,165 +2445,12 @@ export function DashboardPage({
               notice ? "mt-5" : isModal ? "" : "mt-6",
               isModal
                 ? ""
-                : "overflow-hidden rounded-[26px] border border-black/8 bg-white shadow-[0_12px_24px_rgba(140,110,78,0.06)]"
+                : "overflow-hidden rounded-[26px] bg-[#fcfaf7] shadow-[0_12px_24px_rgba(140,110,78,0.06)]"
             ].join(" ")}
           >
             <AnimatePresence mode="wait">{activeTab === "book" ? renderBookTab() : renderTrackTab()}</AnimatePresence>
           </div>
         </section>
-
-        {!isModal && isUserAuthenticated && (
-          <section className="mt-6 rounded-[28px] border border-black/8 bg-white p-5 shadow-[0_16px_34px_rgba(140,110,78,0.06)] md:p-8">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <SectionBadge label="Recent Shipments" />
-                <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Latest customer bookings</h2>
-              </div>
-              <div className="text-sm text-neutral-500">Tap any tracking number to open it in the tracking tab</div>
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
-              {shipments.slice(0, 3).map((shipment) => (
-                <button
-                  key={shipment.ref}
-                  type="button"
-                  onClick={() => {
-                    router.push(`/dashboard/track?ref=${encodeURIComponent(shipment.ref)}`);
-                  }}
-                  className="rounded-[24px] border border-black/8 bg-white p-5 text-left shadow-[0_10px_18px_rgba(140,110,78,0.05)] transition-colors hover:border-orange-200"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="text-sm font-semibold text-neutral-950">{shipment.ref}</div>
-                    <span
-                      className={[
-                        "rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em]",
-                        statusClasses(shipment.status)
-                      ].join(" ")}
-                    >
-                      {shipment.status}
-                    </span>
-                  </div>
-                  <div className="mt-3 text-sm text-neutral-700">{shipment.customer}</div>
-                  <div className="mt-2 text-sm text-neutral-600">
-                    {shipment.origin} {"->"} {shipment.destination}
-                  </div>
-                  <div className="mt-3 text-xs uppercase tracking-[0.18em] text-neutral-500">{shipment.eta}</div>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {!isModal && isUserAuthenticated && (
-          <section className="mt-6 rounded-[28px] border border-black/8 bg-white p-5 shadow-[0_16px_34px_rgba(140,110,78,0.06)] md:p-8">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <SectionBadge label="Shipment Requests" />
-                <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Your inquiry and payment progress</h2>
-              </div>
-              <div className="text-sm text-neutral-500">Quotes, contact details, payment proof, invoices, and tracking all appear here.</div>
-            </div>
-
-            <div className="mt-6 grid gap-4">
-              {visiblePaymentRequests.length === 0 ? (
-                <div className="rounded-[24px] border border-black/8 bg-[#fcfaf7] p-5 text-sm leading-7 text-neutral-600">
-                  No shipment requests yet. Submit a new inquiry above and Swift Signate will review it.
-                </div>
-              ) : (
-                visiblePaymentRequests.map((request) => (
-                  <div key={request.id} className="rounded-[24px] border border-black/8 bg-white p-5 shadow-[0_10px_18px_rgba(140,110,78,0.05)]">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">{request.id}</div>
-                        <div className="mt-2 text-xl font-semibold text-neutral-950">{request.serviceTitle || "Shipment inquiry"}</div>
-                        <div className="mt-2 text-sm text-neutral-600">
-                          {request.origin} {"->"} {request.destination}
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-start gap-3 sm:items-end">
-                        <span
-                          className={[
-                            "rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em]",
-                            requestStatusClasses(request.status)
-                          ].join(" ")}
-                        >
-                          {request.status}
-                        </span>
-                        <div className="text-lg font-semibold text-neutral-950">
-                          {request.status === "Inquiry received" || (request.amount <= 0 && request.status !== "Approved")
-                            ? "Quote pending"
-                            : formatCurrency(request.amount)}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
-                      <div className="rounded-[18px] bg-[#fcfaf7] p-4 text-sm leading-6 text-neutral-700">
-                        <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Admin note</div>
-                        <div className="mt-2">{request.note || "Waiting for Swift Signate to review your inquiry."}</div>
-                      </div>
-
-                      <div className="rounded-[18px] bg-[#fcfaf7] p-4 text-sm leading-6 text-neutral-700">
-                        <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Payment details</div>
-                        <div className="mt-2">{request.bankName || "Bank will appear after Swift Signate sends your quote."}</div>
-                        <div>{request.accountNumber || "Account number will appear here."}</div>
-                        <div>{request.accountName || "Account name will appear here."}</div>
-                        {request.invoiceNumber && (
-                          <div className="mt-3 rounded-[14px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-700">
-                            Invoice: {request.invoiceNumber}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col gap-3">
-                        {request.status === "Quote sent" ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => openRequestWorkflow(request)}
-                              className="inline-flex min-h-[48px] items-center justify-center rounded-[12px] border border-orange-200 bg-orange-50/40 px-4 text-sm font-semibold text-ember"
-                            >
-                              {activeRequestWorkflowId === request.id ? "Hide next steps" : "Continue with contact and payment"}
-                            </button>
-                            <div className="rounded-[14px] border border-black/8 bg-white px-4 py-3 text-sm text-neutral-600">
-                              {requestHasCompleteContacts(request.details)
-                                ? "Contact details saved. You can upload payment proof below."
-                                : "Save contact details before uploading proof."}
-                            </div>
-                          </>
-                        ) : request.status === "Approved" && request.shipmentRef ? (
-                          <Link
-                            href={`/dashboard/track?ref=${encodeURIComponent(request.shipmentRef)}`}
-                            className="inline-flex min-h-[48px] items-center justify-center rounded-[12px] bg-ember px-4 text-sm font-semibold text-white"
-                          >
-                            Open tracking
-                          </Link>
-                        ) : (
-                          <div className="rounded-[14px] border border-black/8 bg-white px-4 py-3 text-sm text-neutral-600">
-                            {request.status === "Inquiry received"
-                              ? "Waiting for Swift Signate quote"
-                              : request.status === "Payment submitted" || request.status === "Awaiting verification"
-                                ? "Payment proof submitted"
-                                : request.status === "Rejected"
-                                  ? "Check the Swift Signate note above"
-                                  : "Awaiting next update"}
-                          </div>
-                        )}
-
-                        {request.paymentProofName && (
-                          <div className="rounded-[14px] border border-black/8 bg-[#fcfaf7] px-4 py-3 text-sm text-neutral-700">
-                            Proof: <span className="font-medium text-neutral-950">{request.paymentProofName}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    {renderQuotedRequestWorkflow(request)}
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-        )}
 
         <AnimatePresence>
           {feedbackModal.open && (
@@ -2625,6 +2505,14 @@ export function DashboardPage({
                         Open tracking
                       </Link>
                     )}
+                    {isModal && (
+                      <Link
+                        href={modalDashboardHref}
+                        className="inline-flex min-h-[48px] items-center justify-center rounded-[12px] border border-black/10 bg-white px-5 text-sm font-medium text-neutral-700"
+                      >
+                        Open dashboard
+                      </Link>
+                    )}
                   </div>
                 )}
               </motion.div>
@@ -2632,6 +2520,7 @@ export function DashboardPage({
           )}
         </AnimatePresence>
       </div>
+      {!isModal && <SiteFooter />}
     </ShellTag>
   );
 }

@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        message: "Sign in failed. Check the database connection and try again."
+        message: "Log in failed. Check the database connection and try again."
       },
       { status: 500 }
     );

@@ -68,9 +68,16 @@ export type SiteContent = {
     contactModalEyebrow: string;
     contactModalTitle: string;
     contactModalSubmitLabel: string;
+    whatsappHref: string;
     whatsappLabel: string;
     emailLabel: string;
     contactEmail: string;
+  };
+  footer: {
+    facebookHref: string;
+    instagramHref: string;
+    tiktokHref: string;
+    xHref: string;
   };
   hero: {
     eyebrow: string;
@@ -356,9 +363,16 @@ export const defaultSiteContent: SiteContent = {
     contactModalEyebrow: "Contact Swift Signate",
     contactModalTitle: "Tell us about your shipment or support request.",
     contactModalSubmitLabel: "Send Request",
+    whatsappHref: "",
     whatsappLabel: "WhatsApp",
     emailLabel: "Email Us",
     contactEmail: "hello@swiftsignate.com"
+  },
+  footer: {
+    facebookHref: "",
+    instagramHref: "",
+    tiktokHref: "",
+    xHref: ""
   },
   hero: {
     eyebrow: "Swift Signate Logistics",
@@ -405,7 +419,7 @@ export const defaultSiteContent: SiteContent = {
     eyebrow: "Customer Services",
     bookTitle: "Book your shipment in clear, guided steps.",
     bookCopy:
-      "Choose the shipment type, describe the package, review delivery options, enter contact details, and confirm payment.",
+      "Choose the shipment type, describe the package, review the request, and confirm payment.",
     bookHelper: "Payment confirmation creates your tracking number automatically.",
     trackTitle: "Track your shipment in one simple view.",
     trackCopy: "Enter your tracking number to see the latest shipment status, route, and delivery progress.",
@@ -439,6 +453,10 @@ export function mergeSiteContent(content: Partial<SiteContent> | null | undefine
     navigation: {
       ...defaultSiteContent.navigation,
       ...parsed.navigation
+    },
+    footer: {
+      ...defaultSiteContent.footer,
+      ...parsed.footer
     },
     hero: {
       ...defaultSiteContent.hero,

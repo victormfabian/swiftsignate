@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth-session";
-import { updatePaymentRequestRecord } from "@/lib/operations-db";
+import { updateAdminPaymentRequestRecord } from "@/lib/operations-db";
 import type { PaymentRequest } from "@/lib/shipment-model";
 
 export const runtime = "nodejs";
@@ -20,7 +20,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
   const { id } = await params;
   const updates = (await request.json()) as Partial<PaymentRequest>;
-  const paymentRequest = await updatePaymentRequestRecord(id, updates);
+  const paymentRequest = await updateAdminPaymentRequestRecord(id, updates);
 
   if (!paymentRequest) {
     return NextResponse.json({ ok: false, message: "Payment request not found." }, { status: 404 });

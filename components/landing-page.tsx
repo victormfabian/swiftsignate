@@ -7,6 +7,7 @@ import { GlowButton } from "@/components/buttons";
 import { DashboardPage } from "@/components/dashboard-page";
 import { IconGlyph } from "@/components/icon-glyph";
 import { Navigation } from "@/components/navigation";
+import { SiteFooter } from "@/components/site-footer";
 import { useSiteContentStore } from "@/components/site-content-store";
 import { mediaSourceToBackground, resolveMediaSource } from "@/lib/media-utils";
 
@@ -190,23 +191,11 @@ function TrustCard({
 }
 
 export function LandingPage() {
-  const [activeHeroPanel, setActiveHeroPanel] = useState<"book" | "track" | null>(null);
+  const [activeHeroPanel, setActiveHeroPanel] = useState<"track" | null>(null);
   const [showDiscoverCue, setShowDiscoverCue] = useState(true);
   const heroPanelRef = useRef<HTMLElement | null>(null);
   const servicesSectionRef = useRef<HTMLElement | null>(null);
   const { content } = useSiteContentStore();
-
-  useEffect(() => {
-    if (!activeHeroPanel || !heroPanelRef.current) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      heroPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [activeHeroPanel]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -249,9 +238,7 @@ export function LandingPage() {
               </p>
               <div className="mx-auto mt-10 grid max-w-[280px] grid-cols-1 gap-3 sm:mx-0 sm:max-w-[360px] sm:grid-cols-2">
                 <GlowButton
-                  onClick={() => setActiveHeroPanel("book")}
-                  ariaControls="hero-service-modal"
-                  ariaExpanded={activeHeroPanel === "book"}
+                  href="/dashboard/book"
                   label={content.hero.bookButtonLabel}
                   shape="parallelogram"
                   className="w-full justify-center px-5"
@@ -305,7 +292,7 @@ export function LandingPage() {
             style={{ transformOrigin: "50% 0%" }}
             className="relative z-20 -mt-16 px-4 pb-8 md:-mt-20 md:px-6 md:pb-10"
           >
-            <div className="mx-auto w-full max-w-6xl overflow-hidden rounded-[32px] border border-black/8 bg-white shadow-[0_32px_80px_rgba(23,20,18,0.18)]">
+            <div className="mx-auto w-full max-w-6xl overflow-hidden rounded-[32px] bg-white shadow-[0_32px_80px_rgba(23,20,18,0.18)]">
               <DashboardPage
                 initialTab={activeHeroPanel}
                 displayMode="modal"
@@ -441,6 +428,8 @@ export function LandingPage() {
           </div>
         </div>
       </section>
+
+      <SiteFooter />
     </main>
   );
 }

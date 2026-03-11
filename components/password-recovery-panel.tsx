@@ -126,7 +126,7 @@ export function PasswordRecoveryPanel(props: PasswordRecoveryPanelProps) {
               href={`/auth?next=${encodeURIComponent(nextPath)}`}
               className="rounded-full px-3 py-2 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-100"
             >
-              Back to sign in
+              Back to log in
             </Link>
           </div>
 

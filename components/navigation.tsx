@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { LogoMark } from "@/components/logo-mark";
 import { useSiteContentStore } from "@/components/site-content-store";
+import { buildMailHref, buildWhatsAppHref } from "@/lib/contact-links";
 
 type ContactForm = {
   name: string;
@@ -21,18 +22,16 @@ const initialFormState: ContactForm = {
 };
 
 function buildContactMessage(form: ContactForm) {
-  return encodeURIComponent(
-    [
-      "Hello Swift Signate,",
-      "",
-      `Name: ${form.name || "-"}`,
-      `Email: ${form.email || "-"}`,
-      `Phone: ${form.phone || "-"}`,
-      "",
-      "Message:",
-      form.message || "-"
-    ].join("\n")
-  );
+  return [
+    "Hello Swift Signate,",
+    "",
+    `Name: ${form.name || "-"}`,
+    `Email: ${form.email || "-"}`,
+    `Phone: ${form.phone || "-"}`,
+    "",
+    "Message:",
+    form.message || "-"
+  ].join("\n");
 }
 
 export function Navigation() {
@@ -64,9 +63,9 @@ export function Navigation() {
     };
   }, [contactOpen]);
 
-  const encodedMessage = buildContactMessage(form);
-  const whatsappHref = `https://wa.me/?text=${encodedMessage}`;
-  const emailHref = `mailto:${content.navigation.contactEmail}?subject=Logistics%20Inquiry&body=${encodedMessage}`;
+  const contactMessage = buildContactMessage(form);
+  const whatsappHref = buildWhatsAppHref(content.navigation.whatsappHref, contactMessage);
+  const emailHref = buildMailHref(content.navigation.contactEmail, "Logistics Inquiry", contactMessage);
 
   const handleContactSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

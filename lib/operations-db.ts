@@ -21,6 +21,7 @@ import {
   normalizeTrackingNumber,
   parseTrackingSequence,
   type PaymentRequest,
+  type ShipmentQuote,
   type ShipmentPartyDetails,
   previewTrackingNumber,
   seedShipments,
@@ -156,6 +157,71 @@ function hasStoredRequestContacts(details: BookingRecordDetails | null | undefin
   }
 
   return hasPartyContactDetails(details.sender) && hasPartyContactDetails(details.receiver, { requirePostalCode: true });
+}
+
+function mergeQuoteForAdminUpdate(
+  currentQuote: ShipmentQuote | null | undefined,
+  nextQuote: Partial<ShipmentQuote> | null | undefined
+) {
+  if (!currentQuote && !nextQuote) {
+    return null;
+  }
+
+  return {
+    id: nextQuote?.id ?? currentQuote?.id ?? "custom-service",
+    title: nextQuote?.title ?? currentQuote?.title ?? "",
+    etaHeadline: nextQuote?.etaHeadline ?? currentQuote?.etaHeadline ?? "",
+    etaDetail: nextQuote?.etaDetail ?? currentQuote?.etaDetail ?? "",
+    pickupNote: nextQuote?.pickupNote ?? currentQuote?.pickupNote ?? "",
+    operator: nextQuote?.operator ?? currentQuote?.operator ?? "",
+    price: nextQuote?.price ?? currentQuote?.price ?? 0,
+    ratePerKg: nextQuote?.ratePerKg ?? currentQuote?.ratePerKg ?? 0,
+    minimumTotal: nextQuote?.minimumTotal ?? currentQuote?.minimumTotal ?? 0,
+    serviceFee: nextQuote?.serviceFee ?? currentQuote?.serviceFee ?? 0,
+    packagingFee: nextQuote?.packagingFee ?? currentQuote?.packagingFee ?? 0,
+    liabilityFee: nextQuote?.liabilityFee ?? currentQuote?.liabilityFee ?? 0,
+    residentialFee: nextQuote?.residentialFee ?? currentQuote?.residentialFee ?? 0,
+    extraPackageFee: nextQuote?.extraPackageFee ?? currentQuote?.extraPackageFee ?? 0
+  } satisfies ShipmentQuote;
+}
+
+function sanitizeAdminPaymentRequestUpdates(current: PaymentRequest, updates: Partial<PaymentRequest>): Partial<PaymentRequest> {
+  const sanitized: Partial<PaymentRequest> = {};
+
+  if (updates.status !== undefined) {
+    sanitized.status = updates.status;
+  }
+  if (updates.note !== undefined) {
+    sanitized.note = updates.note;
+  }
+  if (updates.bankName !== undefined) {
+    sanitized.bankName = updates.bankName;
+  }
+  if (updates.accountNumber !== undefined) {
+    sanitized.accountNumber = updates.accountNumber;
+  }
+  if (updates.accountName !== undefined) {
+    sanitized.accountName = updates.accountName;
+  }
+  if (updates.serviceTitle !== undefined) {
+    sanitized.serviceTitle = updates.serviceTitle;
+  }
+  if (updates.amount !== undefined) {
+    sanitized.amount = updates.amount;
+  }
+  if (updates.eta !== undefined) {
+    sanitized.eta = updates.eta;
+  }
+
+  if (updates.details) {
+    const currentDetails = current.details ?? buildFallbackRequestDetails(current);
+    sanitized.details = {
+      ...currentDetails,
+      selectedQuote: mergeQuoteForAdminUpdate(currentDetails.selectedQuote, updates.details.selectedQuote ?? undefined)
+    };
+  }
+
+  return sanitized;
 }
 
 function mapShipment(row: ShipmentRow): Shipment {
@@ -1264,6 +1330,17 @@ export async function saveCustomerRequestContactsRecord(
       receiver: input.receiver
     }
   });
+}
+
+export async function updateAdminPaymentRequestRecord(requestId: string, updates: Partial<PaymentRequest>) {
+  const requests = await listPaymentRequests();
+  const current = requests.find((item) => item.id === requestId);
+
+  if (!current) {
+    return null;
+  }
+
+  return updatePaymentRequestRecord(requestId, sanitizeAdminPaymentRequestUpdates(current, updates));
 }
 
 export async function updatePaymentRequestRecord(requestId: string, updates: Partial<PaymentRequest>) {

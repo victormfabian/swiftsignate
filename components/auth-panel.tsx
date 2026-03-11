@@ -47,10 +47,10 @@ export function AuthPanel({ role, mode = "page", title, nextPath, initialNotice 
     }
 
     if (role === "admin") {
-      return "Sign in";
+      return "Log in";
     }
 
-    return userMode === "signup" ? "Partner sign up" : "Partner sign in";
+    return userMode === "signup" ? "Partner register" : "Partner log in";
   }, [role, title, userMode]);
 
   const safeNextPath = useMemo(() => {
@@ -64,7 +64,7 @@ export function AuthPanel({ role, mode = "page", title, nextPath, initialNotice 
   const handleUserSignIn = () => {
     void (async () => {
       if (!isValidEmail(signInForm.email) || !signInForm.password.trim()) {
-        setNotice("Enter your email address and password to sign in.");
+        setNotice("Enter your email address and password to log in.");
         return;
       }
 
@@ -81,7 +81,7 @@ export function AuthPanel({ role, mode = "page", title, nextPath, initialNotice 
         const result = (await response.json()) as { ok: boolean; message?: string };
 
         if (!response.ok || !result.ok) {
-          setNotice(result.message ?? "Could not sign in.");
+          setNotice(result.message ?? "Could not log in.");
           return;
         }
 
@@ -95,7 +95,7 @@ export function AuthPanel({ role, mode = "page", title, nextPath, initialNotice 
         router.push(safeNextPath);
         router.refresh();
       } catch {
-        setNotice("Sign in failed. Check the deployment and database connection, then try again.");
+        setNotice("Log in failed. Check the deployment and database connection, then try again.");
       } finally {
         setSubmitting(false);
       }
@@ -136,7 +136,7 @@ export function AuthPanel({ role, mode = "page", title, nextPath, initialNotice 
         });
         setNotice(result.message ?? "Partner registration received. Watch your email for approval.");
       } catch {
-        setNotice("Partner registration failed. Check the deployment and database connection, then try again.");
+        setNotice("Registration failed. Check the deployment and database connection, then try again.");
       } finally {
         setSubmitting(false);
       }
@@ -163,7 +163,7 @@ export function AuthPanel({ role, mode = "page", title, nextPath, initialNotice 
         const result = (await response.json()) as { ok: boolean; message?: string };
 
         if (!response.ok || !result.ok) {
-          setNotice(result.message ?? "Could not sign in.");
+          setNotice(result.message ?? "Could not log in.");
           return;
         }
 
@@ -177,7 +177,7 @@ export function AuthPanel({ role, mode = "page", title, nextPath, initialNotice 
         router.push(nextPath ?? "/swiftadmin");
         router.refresh();
       } catch {
-        setNotice("Admin sign in failed. Check the deployment and database connection, then try again.");
+        setNotice("Admin log in failed. Check the deployment and database connection, then try again.");
       } finally {
         setSubmitting(false);
       }
@@ -210,8 +210,8 @@ export function AuthPanel({ role, mode = "page", title, nextPath, initialNotice 
                 <>
                   <div className="inline-flex rounded-full bg-white p-1 shadow-[0_6px_14px_rgba(140,110,78,0.06)]">
                     {[
-                      { id: "signin", label: "Sign In" },
-                      { id: "signup", label: "Sign Up" }
+                      { id: "signin", label: "Log In" },
+                      { id: "signup", label: "Register" }
                     ].map((tab) => {
                       const active = userMode === tab.id;
 
@@ -269,10 +269,10 @@ export function AuthPanel({ role, mode = "page", title, nextPath, initialNotice 
                         disabled={submitting}
                         className="inline-flex min-h-[52px] items-center justify-center rounded-[14px] bg-ember px-6 text-sm font-semibold text-white"
                       >
-                        {submitting ? "Signing In..." : "Sign In"}
+                        {submitting ? "Logging In..." : "Log In"}
                       </button>
                     </div>
-                  ) : (
+	                  ) : (
 	                    <div className="mt-6 grid gap-4">
 	                      <label>
 	                        <span className={labelClassName}>Business name</span>
@@ -299,7 +299,7 @@ export function AuthPanel({ role, mode = "page", title, nextPath, initialNotice 
 	                        disabled={submitting}
 	                        className="inline-flex min-h-[52px] items-center justify-center rounded-[14px] bg-ember px-6 text-sm font-semibold text-white"
 	                      >
-	                        {submitting ? "Sending Request..." : "Request Partner Access"}
+	                        {submitting ? "Registering..." : "Register"}
 	                      </button>
 	                    </div>
                   )}
@@ -330,7 +330,7 @@ export function AuthPanel({ role, mode = "page", title, nextPath, initialNotice 
                     disabled={submitting}
                     className="inline-flex min-h-[52px] items-center justify-center rounded-[14px] bg-ember px-6 text-sm font-semibold text-white"
                   >
-                    {submitting ? "Signing In..." : "Secure Sign In"}
+                    {submitting ? "Logging In..." : "Secure Log In"}
                   </button>
                 </div>
               )}

@@ -392,13 +392,11 @@ function applyRequestQuoteComputation(request: PaymentRequest, content: SiteCont
   const packageCount = request.details.shipment.packages.length;
   const chargeableWeight = calculateChargeableWeight(request.details, content);
   const baseWeightAmount = chargeableWeight * (quote.ratePerKg ?? 0);
-  const routeAmount = Math.max(baseWeightAmount, quote.minimumTotal ?? 0);
   const serviceFee = quote.serviceFee ?? 0;
   const packagingFee = quote.packagingFee ?? 0;
   const liabilityFee = request.details.shipment.higherLiability ? quote.liabilityFee ?? 0 : 0;
-  const residentialFee = request.details.route.residential ? quote.residentialFee ?? 0 : 0;
   const quantityFee = Math.max(packageCount - 1, 0) * (quote.extraPackageFee ?? 0);
-  const finalPrice = Number((routeAmount + serviceFee + packagingFee + liabilityFee + residentialFee + quantityFee).toFixed(2));
+  const finalPrice = Number((baseWeightAmount + serviceFee + packagingFee + liabilityFee + quantityFee).toFixed(2));
 
   return syncPaymentRequestDraftDetails({
     ...request,
@@ -624,9 +622,7 @@ export function AdminPage() {
     ],
     booking: [
       { id: "setup-locations", label: "Locations", detail: "Manage origin and destination countries and cities" },
-      { id: "setup-quantities", label: "Package counts", detail: "Choose the package count presets shown during booking" },
-      { id: "setup-packaging", label: "Packaging", detail: "Packaging types and icons" },
-      { id: "setup-delivery", label: "Shipping options", detail: "Operators and timeline templates" }
+      { id: "setup-packaging", label: "Packaging", detail: "Packaging types, icons, and package count presets" }
     ],
     request: [
       { id: "transfers-list", label: "Shipment requests", detail: "Inquiry, quote, contact, and payment proof" },
@@ -642,6 +638,7 @@ export function AdminPage() {
       { id: "content-services", label: "Services", detail: "Service cards and media" },
       { id: "content-why-us", label: "Why choose us", detail: "Trust section" },
       { id: "content-process", label: "How it works", detail: "Process steps" },
+      { id: "content-footer", label: "Footer", detail: "Footer social links" },
       { id: "content-customer-pages", label: "Customer pages", detail: "Booking, tracking, and payment copy" }
     ]
   };
@@ -1453,18 +1450,18 @@ export function AdminPage() {
   const handleSaveContent = async () => {
     try {
       await updateContent(contentDraft);
-      setContentMessage("Shipping setup has been updated.");
+      setContentMessage("Booking setup has been updated.");
     } catch {
-      setContentMessage("Could not save the shipping setup right now.");
+      setContentMessage("Could not save the booking setup right now.");
     }
   };
 
   const handleResetContent = async () => {
     try {
       await resetContent();
-      setContentMessage("Shipping setup has been reset to the default values.");
+      setContentMessage("Booking setup has been reset to the default values.");
     } catch {
-      setContentMessage("Could not reset the shipping setup.");
+      setContentMessage("Could not reset the booking setup.");
     }
   };
 
@@ -1490,10 +1487,8 @@ export function AdminPage() {
     const packageCount = requestDraft.details.shipment.packages.length;
     const quote = requestDraft.details.selectedQuote;
     const baseWeightAmount = requestChargeableWeight * (quote?.ratePerKg ?? 0);
-    const routeAmount = Math.max(baseWeightAmount, quote?.minimumTotal ?? 0);
     const quantityFee = Math.max(packageCount - 1, 0) * (quote?.extraPackageFee ?? 0);
     const liabilityFee = requestDraft.details.shipment.higherLiability ? quote?.liabilityFee ?? 0 : 0;
-    const residentialFee = requestDraft.details.route.residential ? quote?.residentialFee ?? 0 : 0;
     const finalAmount = quote?.price ?? requestDraft.amount;
 
     return (
@@ -1509,9 +1504,9 @@ export function AdminPage() {
             <div className="mt-2 text-xl font-semibold text-neutral-950">{requestChargeableWeight.toFixed(2)} kg</div>
           </div>
           <div className="rounded-[18px] border border-black/8 bg-white p-4">
-            <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Route amount</div>
+            <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Weight charge</div>
             <div className="mt-2 text-xl font-semibold text-neutral-950">
-              {new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(routeAmount)}
+              {new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(baseWeightAmount)}
             </div>
           </div>
           <div className="rounded-[18px] border border-orange-200 bg-orange-50/50 p-4">
@@ -1521,56 +1516,31 @@ export function AdminPage() {
             </div>
           </div>
         </div>
+
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <label>
             <span className={labelClassName}>Origin country</span>
-            <input
-              value={requestDraft.details.route.fromCountry}
-              onChange={(event) => handleRequestDetailRouteField("fromCountry", event.target.value)}
-              className={fieldClassName}
-            />
+            <input value={requestDraft.details.route.fromCountry} readOnly className={fieldClassName} />
           </label>
           <label>
             <span className={labelClassName}>Origin city</span>
-            <input
-              value={requestDraft.details.route.fromCity}
-              onChange={(event) => handleRequestDetailRouteField("fromCity", event.target.value)}
-              className={fieldClassName}
-            />
+            <input value={requestDraft.details.route.fromCity} readOnly className={fieldClassName} />
           </label>
           <label>
             <span className={labelClassName}>Destination country</span>
-            <input
-              value={requestDraft.details.route.toCountry}
-              onChange={(event) => handleRequestDetailRouteField("toCountry", event.target.value)}
-              className={fieldClassName}
-            />
+            <input value={requestDraft.details.route.toCountry} readOnly className={fieldClassName} />
           </label>
           <label>
             <span className={labelClassName}>Destination city</span>
-            <input
-              value={requestDraft.details.route.toCity}
-              onChange={(event) => handleRequestDetailRouteField("toCity", event.target.value)}
-              className={fieldClassName}
-            />
+            <input value={requestDraft.details.route.toCity} readOnly className={fieldClassName} />
           </label>
           <label>
             <span className={labelClassName}>Packaging type</span>
-            <input
-              value={requestDraft.details.shipment.packagingType}
-              onChange={(event) => handleRequestDetailShipmentField("packagingType", event.target.value)}
-              className={fieldClassName}
-            />
+            <input value={requestDraft.details.shipment.packagingType} readOnly className={fieldClassName} />
           </label>
           <label>
             <span className={labelClassName}>Package count</span>
-            <input
-              type="number"
-              min={1}
-              value={requestDraft.details.shipment.packages.length}
-              onChange={(event) => handleRequestDetailPackageCount(Number(event.target.value) || 1)}
-              className={fieldClassName}
-            />
+            <input value={String(requestDraft.details.shipment.packages.length)} readOnly className={fieldClassName} />
           </label>
           <label>
             <span className={labelClassName}>Quoted service</span>
@@ -1594,15 +1564,6 @@ export function AdminPage() {
               type="number"
               value={requestDraft.details.selectedQuote?.ratePerKg ?? 0}
               onChange={(event) => handleRequestDetailQuoteField("ratePerKg", Number(event.target.value) || 0)}
-              className={fieldClassName}
-            />
-          </label>
-          <label>
-            <span className={labelClassName}>Minimum total</span>
-            <input
-              type="number"
-              value={requestDraft.details.selectedQuote?.minimumTotal ?? 0}
-              onChange={(event) => handleRequestDetailQuoteField("minimumTotal", Number(event.target.value) || 0)}
               className={fieldClassName}
             />
           </label>
@@ -1634,15 +1595,6 @@ export function AdminPage() {
             />
           </label>
           <label>
-            <span className={labelClassName}>Residential fee</span>
-            <input
-              type="number"
-              value={requestDraft.details.selectedQuote?.residentialFee ?? 0}
-              onChange={(event) => handleRequestDetailQuoteField("residentialFee", Number(event.target.value) || 0)}
-              className={fieldClassName}
-            />
-          </label>
-          <label>
             <span className={labelClassName}>Extra cover fee</span>
             <input
               type="number"
@@ -1669,7 +1621,11 @@ export function AdminPage() {
           </label>
           <label>
             <span className={labelClassName}>Final quote amount</span>
-            <input value={new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(finalAmount)} readOnly className={fieldClassName} />
+            <input
+              value={new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(finalAmount)}
+              readOnly
+              className={fieldClassName}
+            />
           </label>
           <label className="md:col-span-2">
             <span className={labelClassName}>Quote note</span>
@@ -1685,11 +1641,9 @@ export function AdminPage() {
           <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Quote breakdown</div>
           <div className="mt-3 grid gap-2 md:grid-cols-2">
             <div>Weight charge: {new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(baseWeightAmount)}</div>
-            <div>Route minimum applied: {new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(routeAmount)}</div>
             <div>Service fee: {new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(quote?.serviceFee ?? 0)}</div>
             <div>Packaging fee: {new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(quote?.packagingFee ?? 0)}</div>
             <div>Extra package fee: {new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(quantityFee)}</div>
-            <div>Residential fee: {new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(residentialFee)}</div>
             <div>Extra cover fee: {new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(liabilityFee)}</div>
           </div>
         </div>
@@ -1715,67 +1669,35 @@ export function AdminPage() {
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <label className="sm:col-span-2">
                     <span className={labelClassName}>Full name</span>
-                    <input
-                      value={details?.name ?? ""}
-                      onChange={(event) => handleRequestDetailPartyField(party.side, "name", event.target.value)}
-                      className={fieldClassName}
-                    />
+                    <input value={details?.name ?? ""} readOnly className={fieldClassName} />
                   </label>
                   <label className="sm:col-span-2">
                     <span className={labelClassName}>Company</span>
-                    <input
-                      value={details?.company ?? ""}
-                      onChange={(event) => handleRequestDetailPartyField(party.side, "company", event.target.value)}
-                      className={fieldClassName}
-                    />
+                    <input value={details?.company ?? ""} readOnly className={fieldClassName} />
                   </label>
                   <label>
                     <span className={labelClassName}>Email</span>
-                    <input
-                      value={details?.email ?? ""}
-                      onChange={(event) => handleRequestDetailPartyField(party.side, "email", event.target.value)}
-                      className={fieldClassName}
-                    />
+                    <input value={details?.email ?? ""} readOnly className={fieldClassName} />
                   </label>
                   <label>
                     <span className={labelClassName}>Phone</span>
-                    <input
-                      value={details?.phone ?? ""}
-                      onChange={(event) => handleRequestDetailPartyField(party.side, "phone", event.target.value)}
-                      className={fieldClassName}
-                    />
+                    <input value={details?.phone ?? ""} readOnly className={fieldClassName} />
                   </label>
                   <label className="sm:col-span-2">
                     <span className={labelClassName}>Address line 1</span>
-                    <input
-                      value={details?.address1 ?? ""}
-                      onChange={(event) => handleRequestDetailPartyField(party.side, "address1", event.target.value)}
-                      className={fieldClassName}
-                    />
+                    <input value={details?.address1 ?? ""} readOnly className={fieldClassName} />
                   </label>
                   <label className="sm:col-span-2">
                     <span className={labelClassName}>Address line 2</span>
-                    <input
-                      value={details?.address2 ?? ""}
-                      onChange={(event) => handleRequestDetailPartyField(party.side, "address2", event.target.value)}
-                      className={fieldClassName}
-                    />
+                    <input value={details?.address2 ?? ""} readOnly className={fieldClassName} />
                   </label>
                   <label>
                     <span className={labelClassName}>City</span>
-                    <input
-                      value={details?.city ?? ""}
-                      onChange={(event) => handleRequestDetailPartyField(party.side, "city", event.target.value)}
-                      className={fieldClassName}
-                    />
+                    <input value={details?.city ?? ""} readOnly className={fieldClassName} />
                   </label>
                   <label>
                     <span className={labelClassName}>Postal code</span>
-                    <input
-                      value={details?.postalCode ?? ""}
-                      onChange={(event) => handleRequestDetailPartyField(party.side, "postalCode", event.target.value)}
-                      className={fieldClassName}
-                    />
+                    <input value={details?.postalCode ?? ""} readOnly className={fieldClassName} />
                   </label>
                   <label>
                     <span className={labelClassName}>Country</span>
@@ -1783,14 +1705,7 @@ export function AdminPage() {
                   </label>
                   <label>
                     <span className={labelClassName}>Residential address</span>
-                    <select
-                      value={details?.residential ? "yes" : "no"}
-                      onChange={(event) => handleRequestDetailPartyField(party.side, "residential", event.target.value === "yes")}
-                      className={fieldClassName}
-                    >
-                      <option value="no">No</option>
-                      <option value="yes">Yes</option>
-                    </select>
+                    <input value={details?.residential ? "Yes" : "No"} readOnly className={fieldClassName} />
                   </label>
                 </div>
               </div>
@@ -1805,35 +1720,19 @@ export function AdminPage() {
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <label>
                   <span className={labelClassName}>Weight</span>
-                  <input
-                    value={entry.weight}
-                    onChange={(event) => handleRequestDetailPackageField(index, "weight", event.target.value)}
-                    className={fieldClassName}
-                  />
+                  <input value={entry.weight} readOnly className={fieldClassName} />
                 </label>
                 <label>
                   <span className={labelClassName}>Length (optional)</span>
-                  <input
-                    value={entry.length}
-                    onChange={(event) => handleRequestDetailPackageField(index, "length", event.target.value)}
-                    className={fieldClassName}
-                  />
+                  <input value={entry.length} readOnly className={fieldClassName} />
                 </label>
                 <label>
                   <span className={labelClassName}>Width (optional)</span>
-                  <input
-                    value={entry.width}
-                    onChange={(event) => handleRequestDetailPackageField(index, "width", event.target.value)}
-                    className={fieldClassName}
-                  />
+                  <input value={entry.width} readOnly className={fieldClassName} />
                 </label>
                 <label>
                   <span className={labelClassName}>Height (optional)</span>
-                  <input
-                    value={entry.height}
-                    onChange={(event) => handleRequestDetailPackageField(index, "height", event.target.value)}
-                    className={fieldClassName}
-                  />
+                  <input value={entry.height} readOnly className={fieldClassName} />
                 </label>
               </div>
             </div>
@@ -1997,7 +1896,7 @@ export function AdminPage() {
         <div className="space-y-5">
           <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Booking setup</div>
           <div className="mt-2 text-sm text-neutral-500">
-            Define origin and destination locations, choose the shipping options shown to partners, and manage the package counts and packaging types used during booking.
+            Define origin and destination locations, manage route rates, and control the packaging types shown during booking.
           </div>
 
           <div id="setup-locations" className={isSectionVisible("setup-locations") ? "mt-4 rounded-[20px] bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)]" : "hidden"}>
@@ -2067,12 +1966,12 @@ export function AdminPage() {
             </div>
           </div>
 
-          <div className={isSectionVisible("setup-quantities") ? "mt-5" : "hidden"}>
-            <div id="setup-pricing" className={isSectionVisible("setup-pricing") ? "rounded-[20px] bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)]" : "hidden"}>
+          <div className={isSectionVisible("setup-locations") ? "mt-5" : "hidden"}>
+            <div id="setup-pricing" className="rounded-[20px] bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Route rate cards</div>
-                  <div className="mt-2 text-sm text-neutral-500">Pick the route, choose the operator template, then set the cost per kg. Leave city blank to make the rate apply to the full country route. Weight entered in pounds is converted to kg automatically before pricing.</div>
+                  <div className="mt-2 text-sm text-neutral-500">Pick the route and set the cost per kg. Leave city blank to make the rate apply to the full country route. Weight entered in pounds is converted to kg automatically before pricing.</div>
                 </div>
                 <button
                   type="button"
@@ -2100,21 +1999,6 @@ export function AdminPage() {
                         </button>
                       </div>
                       <div className="mt-4 grid gap-4 md:grid-cols-2">
-                        <label>
-                          <span className={labelClassName}>Operator template</span>
-                          <select
-                            value={rate.deliveryOptionId}
-                            onChange={(event) => handleRouteRateField(index, "deliveryOptionId", event.target.value)}
-                            className={fieldClassName}
-                          >
-                            <option value="">Select an operator template</option>
-                            {contentDraft.bookingConfig.deliveryOptions.map((option) => (
-                              <option key={option.id} value={option.id}>
-                                {option.title} ({option.operator})
-                              </option>
-                            ))}
-                          </select>
-                        </label>
                         <label>
                           <span className={labelClassName}>Origin country</span>
                           <select
@@ -2200,167 +2084,97 @@ export function AdminPage() {
               </div>
             </div>
 
-            <div id="setup-quantities" className={isSectionVisible("setup-quantities") ? "space-y-5" : "hidden"}>
-              <div className="rounded-[20px] bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Package count presets</div>
-                  <button
-                    type="button"
-                    onClick={addPackageCountSuggestion}
-                    className="inline-flex min-h-[40px] items-center justify-center rounded-[12px] border border-black/8 bg-white px-4 text-sm font-medium text-neutral-700"
-                  >
-                    Add preset
-                  </button>
-                </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {contentDraft.bookingConfig.packageCountSuggestions.map((count, index) => (
-                    <div key={`${count}-${index}`} className="flex gap-3">
-                      <input
-                        type="number"
-                        min={1}
-                        value={count}
-                        onChange={(event) => handlePackageCountSuggestion(index, Number(event.target.value) || 1)}
-                        className={fieldClassName}
-                      />
+          </div>
+
+          <div id="setup-packaging" className={isSectionVisible("setup-packaging") ? "mt-5 space-y-5" : "hidden"}>
+            <div className="rounded-[20px] bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Package count presets</div>
+                <button
+                  type="button"
+                  onClick={addPackageCountSuggestion}
+                  className="inline-flex min-h-[40px] items-center justify-center rounded-[12px] border border-black/8 bg-white px-4 text-sm font-medium text-neutral-700"
+                >
+                  Add preset
+                </button>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {contentDraft.bookingConfig.packageCountSuggestions.map((count, index) => (
+                  <div key={`${count}-${index}`} className="flex gap-3">
+                    <input
+                      type="number"
+                      min={1}
+                      value={count}
+                      onChange={(event) => handlePackageCountSuggestion(index, Number(event.target.value) || 1)}
+                      className={fieldClassName}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePackageCountSuggestion(index)}
+                      className={removeButtonClassName}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[20px] bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Packaging types</div>
+                <button
+                  type="button"
+                  onClick={addPackagingOption}
+                  className="inline-flex min-h-[40px] items-center justify-center rounded-[12px] border border-black/8 bg-white px-4 text-sm font-medium text-neutral-700"
+                >
+                  Add packaging type
+                </button>
+              </div>
+              <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                {contentDraft.bookingConfig.packagingOptions.map((option, index) => (
+                  <div key={`${option.id}-${index}`} className="rounded-[18px] border border-black/8 bg-[#fcfaf7] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-semibold text-neutral-950">Packaging type {index + 1}</div>
                       <button
                         type="button"
-                        onClick={() => removePackageCountSuggestion(index)}
+                        onClick={() => removePackagingOption(index)}
                         className={removeButtonClassName}
                       >
                         Remove
                       </button>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div id="setup-packaging" className={isSectionVisible("setup-packaging") ? "mt-5 rounded-[20px] bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)]" : "hidden"}>
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Packaging types</div>
-              <button
-                type="button"
-                onClick={addPackagingOption}
-                className="inline-flex min-h-[40px] items-center justify-center rounded-[12px] border border-black/8 bg-white px-4 text-sm font-medium text-neutral-700"
-              >
-                Add packaging type
-              </button>
-            </div>
-            <div className="mt-4 grid gap-4 xl:grid-cols-2">
-              {contentDraft.bookingConfig.packagingOptions.map((option, index) => (
-                <div key={`${option.id}-${index}`} className="rounded-[18px] border border-black/8 bg-[#fcfaf7] p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-neutral-950">Packaging type {index + 1}</div>
-                    <button
-                      type="button"
-                      onClick={() => removePackagingOption(index)}
-                      className={removeButtonClassName}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                  <div className="mt-4 space-y-4">
-                    <label>
-                      <span className={labelClassName}>Display name</span>
-                      <input
-                        value={option.label}
-                        onChange={(event) => handlePackagingOptionField(index, "label", event.target.value)}
-                        className={fieldClassName}
-                      />
-                    </label>
-                    <div>
-                      <IconField
-                        label="Packaging icon"
-                        title={`${option.label || "Packaging"} icon`}
-                        value={option.icon}
-                        fallbackValue={defaultBookingConfig.packagingOptions[index]?.icon ?? "delivery"}
-                        onChange={(value) => handlePackagingOptionField(index, "icon", value)}
-                        onUpload={(event) => void handleMediaUpload(event, (value) => handlePackagingOptionField(index, "icon", value))}
-                      />
+                    <div className="mt-4 space-y-4">
+                      <label>
+                        <span className={labelClassName}>Display name</span>
+                        <input
+                          value={option.label}
+                          onChange={(event) => handlePackagingOptionField(index, "label", event.target.value)}
+                          className={fieldClassName}
+                        />
+                      </label>
+                      <div>
+                        <IconField
+                          label="Packaging icon"
+                          title={`${option.label || "Packaging"} icon`}
+                          value={option.icon}
+                          fallbackValue={defaultBookingConfig.packagingOptions[index]?.icon ?? "delivery"}
+                          onChange={(value) => handlePackagingOptionField(index, "icon", value)}
+                          onUpload={(event) => void handleMediaUpload(event, (value) => handlePackagingOptionField(index, "icon", value))}
+                        />
+                      </div>
+                      <label>
+                        <span className={labelClassName}>Customer description</span>
+                        <textarea
+                          value={option.description}
+                          onChange={(event) => handlePackagingOptionField(index, "description", event.target.value)}
+                          className={areaClassName}
+                        />
+                      </label>
                     </div>
-                    <label>
-                      <span className={labelClassName}>Customer description</span>
-                      <textarea
-                        value={option.description}
-                        onChange={(event) => handlePackagingOptionField(index, "description", event.target.value)}
-                        className={areaClassName}
-                      />
-                    </label>
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div id="setup-delivery" className={isSectionVisible("setup-delivery") ? "mt-5 rounded-[20px] bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)]" : "hidden"}>
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Operator templates</div>
-              <button
-                type="button"
-                onClick={addDeliveryOption}
-                className="inline-flex min-h-[40px] items-center justify-center rounded-[12px] border border-black/8 bg-white px-4 text-sm font-medium text-neutral-700"
-              >
-                Add operator template
-              </button>
-            </div>
-            <div className="mt-4 grid gap-4 xl:grid-cols-2">
-              {contentDraft.bookingConfig.deliveryOptions.map((option, index) => (
-                <div key={`${option.id}-${index}`} className="rounded-[18px] border border-black/8 bg-[#fcfaf7] p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-neutral-950">Operator template {index + 1}</div>
-                    <button
-                      type="button"
-                      onClick={() => removeDeliveryOption(index)}
-                      className={removeButtonClassName}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                  <div className="mt-4 grid gap-4">
-                    <label>
-                      <span className={labelClassName}>Template name</span>
-                      <input
-                        value={option.title}
-                        onChange={(event) => handleDeliveryOptionField(index, "title", event.target.value)}
-                        className={fieldClassName}
-                      />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Operator</span>
-                      <input
-                        value={option.operator}
-                        onChange={(event) => handleDeliveryOptionField(index, "operator", event.target.value)}
-                        className={fieldClassName}
-                      />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Timeline label</span>
-                      <input
-                        value={option.etaHeadline}
-                        onChange={(event) => handleDeliveryOptionField(index, "etaHeadline", event.target.value)}
-                        className={fieldClassName}
-                      />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Timeline detail</span>
-                      <input
-                        value={option.etaDetail}
-                        onChange={(event) => handleDeliveryOptionField(index, "etaDetail", event.target.value)}
-                        className={fieldClassName}
-                      />
-                    </label>
-                    <label className="md:col-span-2">
-                      <span className={labelClassName}>Customer note</span>
-                      <textarea
-                        value={option.pickupNote}
-                        onChange={(event) => handleDeliveryOptionField(index, "pickupNote", event.target.value)}
-                        className={areaClassName}
-                      />
-                    </label>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -2377,14 +2191,14 @@ export function AdminPage() {
             onClick={handleSaveContent}
             className={actionPrimaryClassName}
           >
-            Save shipping setup
+            Save booking setup
           </button>
           <button
             type="button"
             onClick={handleResetContent}
             className={actionDangerClassName}
           >
-            Reset shipping setup
+            Reset booking setup
           </button>
         </div>
       </div>
@@ -2531,7 +2345,7 @@ export function AdminPage() {
               <div className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Admin workspace</div>
               <div className="mt-3 text-lg font-semibold text-neutral-950">Signed in as {currentAdmin?.email}</div>
               <div className="mt-2 max-w-2xl text-sm leading-6 text-neutral-600">
-              Manage partner approvals, shipment requests, live shipment records, rates, extras, packaging, and operator timelines from one place.
+              Manage partner approvals, shipment requests, live shipment records, rates, extras, and packaging from one place.
               </div>
             </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -2921,59 +2735,31 @@ export function AdminPage() {
                   <div className="mt-6 grid gap-4 md:grid-cols-2">
                     <label>
                       <span className={labelClassName}>Customer</span>
-                      <input
-                        value={requestDraft.customer}
-                        onChange={(event) => handleRequestField("customer", event.target.value)}
-                        className={fieldClassName}
-                      />
+                      <input value={requestDraft.customer} readOnly className={fieldClassName} />
                     </label>
                     <label>
                       <span className={labelClassName}>Quoted service</span>
-                      <input
-                        value={requestDraft.serviceTitle}
-                        onChange={(event) => handleRequestField("serviceTitle", event.target.value)}
-                        className={fieldClassName}
-                      />
+                      <input value={requestDraft.serviceTitle} readOnly className={fieldClassName} />
                     </label>
                     <label>
                       <span className={labelClassName}>Customer email</span>
-                      <input
-                        value={requestDraft.customerEmail}
-                        onChange={(event) => handleRequestField("customerEmail", event.target.value)}
-                        className={fieldClassName}
-                      />
+                      <input value={requestDraft.customerEmail} readOnly className={fieldClassName} />
                     </label>
                     <label>
                       <span className={labelClassName}>Customer phone</span>
-                      <input
-                        value={requestDraft.customerPhone}
-                        onChange={(event) => handleRequestField("customerPhone", event.target.value)}
-                        className={fieldClassName}
-                      />
+                      <input value={requestDraft.customerPhone} readOnly className={fieldClassName} />
                     </label>
                     <label>
                       <span className={labelClassName}>Origin</span>
-                      <input
-                        value={requestDraft.origin}
-                        onChange={(event) => handleRequestField("origin", event.target.value)}
-                        className={fieldClassName}
-                      />
+                      <input value={requestDraft.origin} readOnly className={fieldClassName} />
                     </label>
                     <label>
                       <span className={labelClassName}>Destination</span>
-                      <input
-                        value={requestDraft.destination}
-                        onChange={(event) => handleRequestField("destination", event.target.value)}
-                        className={fieldClassName}
-                      />
+                      <input value={requestDraft.destination} readOnly className={fieldClassName} />
                     </label>
                     <label>
                       <span className={labelClassName}>Delivery timeline</span>
-                      <input
-                        value={requestDraft.eta}
-                        onChange={(event) => handleRequestField("eta", event.target.value)}
-                        className={fieldClassName}
-                      />
+                      <input value={requestDraft.eta} readOnly className={fieldClassName} />
                     </label>
                     <label>
                       <span className={labelClassName}>Shipping date</span>
@@ -2981,11 +2767,7 @@ export function AdminPage() {
                     </label>
                     <label>
                       <span className={labelClassName}>Package summary</span>
-                      <input
-                        value={requestDraft.packageType}
-                        onChange={(event) => handleRequestField("packageType", event.target.value)}
-                        className={fieldClassName}
-                      />
+                      <input value={requestDraft.packageType} readOnly className={fieldClassName} />
                     </label>
                     <div>
                       <span className={labelClassName}>Status</span>
@@ -3507,10 +3289,10 @@ export function AdminPage() {
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
               <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Booking setup</div>
-              <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Manage locations, shipping options, package counts, and packaging</h2>
+              <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Manage locations, rates, and packaging</h2>
             </div>
             <div className="max-w-2xl text-sm leading-6 text-neutral-500">
-              Set the countries and cities you serve, the shipping options shown to partners, the package count presets, and the packaging types available during booking.
+              Set the countries and cities you serve, the route rate cards you use internally, and the packaging types and package count presets available during booking.
             </div>
           </div>
 
@@ -3574,6 +3356,15 @@ export function AdminPage() {
                   />
                 </label>
                 <label>
+                  <span className={labelClassName}>WhatsApp link</span>
+                  <input
+                    value={contentDraft.navigation.whatsappHref}
+                    onChange={(event) => handleContentField("navigation", "whatsappHref", event.target.value)}
+                    className={fieldClassName}
+                    placeholder="https://wa.me/2348000000000"
+                  />
+                </label>
+                <label>
                   <span className={labelClassName}>Modal eyebrow</span>
                   <input
                     value={contentDraft.navigation.contactModalEyebrow}
@@ -3611,6 +3402,48 @@ export function AdminPage() {
                     value={contentDraft.navigation.emailLabel}
                     onChange={(event) => handleContentField("navigation", "emailLabel", event.target.value)}
                     className={fieldClassName}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div id="content-footer" className={isSectionVisible("content-footer") ? "rounded-[22px] bg-white p-5 shadow-[0_12px_28px_rgba(15,23,42,0.05)]" : "hidden"}>
+              <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Footer</div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label>
+                  <span className={labelClassName}>Facebook link</span>
+                  <input
+                    value={contentDraft.footer.facebookHref}
+                    onChange={(event) => handleContentField("footer", "facebookHref", event.target.value)}
+                    className={fieldClassName}
+                    placeholder="https://facebook.com/yourpage"
+                  />
+                </label>
+                <label>
+                  <span className={labelClassName}>Instagram link</span>
+                  <input
+                    value={contentDraft.footer.instagramHref}
+                    onChange={(event) => handleContentField("footer", "instagramHref", event.target.value)}
+                    className={fieldClassName}
+                    placeholder="https://instagram.com/yourhandle"
+                  />
+                </label>
+                <label>
+                  <span className={labelClassName}>TikTok link</span>
+                  <input
+                    value={contentDraft.footer.tiktokHref}
+                    onChange={(event) => handleContentField("footer", "tiktokHref", event.target.value)}
+                    className={fieldClassName}
+                    placeholder="https://tiktok.com/@yourhandle"
+                  />
+                </label>
+                <label>
+                  <span className={labelClassName}>X link</span>
+                  <input
+                    value={contentDraft.footer.xHref}
+                    onChange={(event) => handleContentField("footer", "xHref", event.target.value)}
+                    className={fieldClassName}
+                    placeholder="https://x.com/yourhandle"
                   />
                 </label>
               </div>
