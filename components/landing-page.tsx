@@ -18,19 +18,24 @@ function CardIcon({ icon }: { icon: string }) {
 function MediaTile({
   source,
   title,
-  className
+  className,
+  tintedOverlay = false
 }: {
   source?: string;
   title: string;
   className: string;
+  tintedOverlay?: boolean;
 }) {
   const media = resolveMediaSource(source);
   const backgroundImage = mediaSourceToBackground(source);
 
   if (media.kind === "video") {
     return (
-      <div className={`${className} overflow-hidden bg-neutral-900`}>
+      <div className={`${className} group relative overflow-hidden bg-neutral-900`}>
         <video src={media.src} className="h-full w-full object-cover" autoPlay muted loop playsInline />
+        {tintedOverlay && (
+          <div className="pointer-events-none absolute inset-0 bg-ember/20 transition-opacity duration-300 group-hover:opacity-0" />
+        )}
       </div>
     );
   }
@@ -73,10 +78,15 @@ function MediaTile({
   }
 
   return (
-    <div
-      className={className}
-      style={backgroundImage ? { backgroundImage, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
-    />
+    <div className={`${className} group relative overflow-hidden`}>
+      <div
+        className="absolute inset-0"
+        style={backgroundImage ? { backgroundImage, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
+      />
+      {tintedOverlay && (
+        <div className="pointer-events-none absolute inset-0 bg-ember/20 transition-opacity duration-300 group-hover:opacity-0" />
+      )}
+    </div>
   );
 }
 
@@ -126,6 +136,7 @@ function ServiceCard({
         <MediaTile
           source={card.image}
           title={card.title}
+          tintedOverlay
           className={stacked ? "h-56 w-full md:h-[320px]" : "h-48 w-full"}
         />
 
@@ -353,7 +364,12 @@ export function LandingPage() {
       <section id="why-us" className="bg-[#fffaf4] px-4 py-16 md:px-6 md:py-20">
         <div className="mx-auto grid w-full max-w-6xl gap-10 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">
           <div className="overflow-hidden rounded-[32px] border border-black/8 bg-white shadow-[0_18px_40px_rgba(140,110,78,0.08)]">
-            <MediaTile source={content.whyUs.image} title={content.whyUs.title} className="h-[320px] w-full md:h-[420px]" />
+            <MediaTile
+              source={content.whyUs.image}
+              title={content.whyUs.title}
+              tintedOverlay
+              className="h-[320px] w-full md:h-[420px]"
+            />
           </div>
 
           <div className="text-center lg:text-left">
