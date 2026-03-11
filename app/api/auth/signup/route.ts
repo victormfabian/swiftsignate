@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createUser } from "@/lib/auth-db";
-import { issueUserSession, setSessionCookie } from "@/lib/auth-session";
+import { createPartnerApplication } from "@/lib/auth-db";
+import { isCustomerEmailConfigured } from "@/lib/customer-email";
 
 export const runtime = "nodejs";
 
@@ -11,62 +11,42 @@ function isValidEmail(value: string) {
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
-      name?: string;
+      businessName?: string;
       email?: string;
-      phone?: string;
-      password?: string;
     };
 
-    if (!body.name?.trim() || !body.phone?.trim() || !body.password?.trim() || !isValidEmail(body.email ?? "")) {
+    if (!body.businessName?.trim() || !isValidEmail(body.email ?? "")) {
       return NextResponse.json(
         {
           ok: false,
-          message: "Name, email, phone number, and password are required."
+          message: "Business name and email are required."
         },
         { status: 400 }
       );
     }
 
-    if (body.password.trim().length < 6) {
-      return NextResponse.json(
-        {
-          ok: false,
-          message: "Password must be at least 6 characters."
-        },
-        { status: 400 }
-      );
-    }
-
-    const result = await createUser({
-      name: body.name,
-      email: body.email ?? "",
-      phone: body.phone,
-      password: body.password
+    const result = await createPartnerApplication({
+      businessName: body.businessName,
+      email: body.email ?? ""
     });
 
     if (!result.ok) {
       return NextResponse.json(result, { status: 409 });
     }
 
-    const response = NextResponse.json({
+    return NextResponse.json({
       ok: true,
-      user: {
-        id: result.user.id,
-        name: result.user.name,
-        email: result.user.email,
-        phone: result.user.phone
-      }
+      message: isCustomerEmailConfigured()
+        ? "Partner registration received. An admin will review your request and email your temporary password after approval."
+        : "Partner registration received, but email delivery is not configured yet. Add RESEND_API_KEY and RESEND_FROM_EMAIL before approval emails can be sent.",
+      partner: result.partner
     });
-
-    setSessionCookie(response, await issueUserSession(result.user.id));
-
-    return response;
   } catch (error) {
     console.error("Auth signup failed", error);
     return NextResponse.json(
       {
         ok: false,
-        message: "Sign up failed. Check the database connection and try again."
+        message: "Partner registration failed. Check the database connection and try again."
       },
       { status: 500 }
     );

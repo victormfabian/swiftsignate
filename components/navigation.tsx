@@ -108,38 +108,12 @@ export function Navigation() {
         transition={{ duration: 0.55, ease: "easeOut" }}
         className="sticky top-4 z-40 mx-auto w-[min(1180px,calc(100%-24px))] text-white"
       >
-        <div className="flex flex-wrap items-center justify-between gap-3 px-1 py-3 sm:gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-1 py-2 sm:gap-4">
           <Link href="/" className="shrink-0">
-            <LogoMark tone="light" mediaSrc={content.navigation.logoMedia} />
+            <LogoMark tone="light" mediaSrc={content.navigation.logoMedia} presentation="bare" />
           </Link>
 
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
-            <label className="sr-only" htmlFor="language-selector">
-              Select language
-            </label>
-            <div className="relative">
-              <select
-                id="language-selector"
-                defaultValue="en"
-                className="h-11 appearance-none bg-transparent px-3 pr-8 text-sm font-medium text-white outline-none"
-              >
-                <option value="en" className="text-neutral-900">
-                  EN
-                </option>
-                <option value="fr" className="text-neutral-900">
-                  FR
-                </option>
-                <option value="es" className="text-neutral-900">
-                  ES
-                </option>
-              </select>
-              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-white/80">
-                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <path d="m5.5 7.5 4.5 4.5 4.5-4.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </span>
-            </div>
-
             <button
               type="button"
               onClick={() => {
@@ -147,10 +121,10 @@ export function Navigation() {
                 setSubmitMessage("");
                 setContactOpen(true);
               }}
-                    className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-medium text-neutral-950 transition-colors hover:bg-orange-100"
-                  >
+              className="inline-flex h-11 items-center justify-center rounded-full border border-white/18 bg-white px-5 text-sm font-medium text-neutral-950 transition-colors hover:bg-orange-100"
+            >
               {content.navigation.contactButtonLabel}
-                    </button>
+            </button>
           </div>
         </div>
       </motion.header>

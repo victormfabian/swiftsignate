@@ -25,32 +25,37 @@ export async function POST(request: Request) {
       );
     }
 
-    const user = await authenticateUser({
+    const result = await authenticateUser({
       email: body.email ?? "",
       password: body.password
     });
 
-    if (!user) {
+    if (!result.ok) {
       return NextResponse.json(
         {
           ok: false,
-          message: "The email or password is incorrect."
+          message:
+            result.reason === "pending"
+              ? "Your partner account is still waiting for admin approval."
+              : "The email or password is incorrect."
         },
-        { status: 401 }
+        { status: result.reason === "pending" ? 403 : 401 }
       );
     }
 
     const response = NextResponse.json({
       ok: true,
       user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone
+        id: result.user.id,
+        name: result.user.name,
+        email: result.user.email,
+        phone: result.user.phone,
+        status: result.user.status,
+        mustChangePassword: Boolean(result.user.must_change_password)
       }
     });
 
-    setSessionCookie(response, await issueUserSession(user.id));
+    setSessionCookie(response, await issueUserSession(result.user.id));
 
     return response;
   } catch (error) {

@@ -1,10 +1,11 @@
 export type ShipmentStatus = "Booked" | "Picked up" | "In transit" | "Out for delivery" | "Delivered";
 export type ShipmentPaymentMethod = "Direct transfer" | "Paystack";
-export type PaymentRequestStatus = "Awaiting verification" | "Approved" | "Rejected";
+export type PaymentRequestStatus = "Inquiry received" | "Quote sent" | "Payment submitted" | "Awaiting verification" | "Approved" | "Rejected";
 export type ShipperType = "private" | "business";
 export type WeightUnit = "kg" | "lb";
 export type DimensionUnit = "cm" | "in";
 export type QuoteSort = "fastest" | "lowest" | "premium";
+export type PartnerStatus = "pending" | "approved";
 
 export type ShipmentPackage = {
   id: string;
@@ -34,6 +35,13 @@ export type ShipmentQuote = {
   pickupNote: string;
   operator: string;
   price: number;
+  ratePerKg?: number;
+  minimumTotal?: number;
+  serviceFee?: number;
+  packagingFee?: number;
+  liabilityFee?: number;
+  residentialFee?: number;
+  extraPackageFee?: number;
 };
 
 export type BookingRecordDetails = {
@@ -87,6 +95,7 @@ export type Shipment = {
   status: ShipmentStatus;
   packageType: string;
   paymentMethod: ShipmentPaymentMethod;
+  clearanceFee?: number;
   lastUpdate: string;
   createdAt: string;
   details?: BookingRecordDetails | null;
@@ -107,6 +116,12 @@ export type PaymentRequest = {
   status: PaymentRequestStatus;
   createdAt: string;
   note: string;
+  bankName?: string;
+  accountNumber?: string;
+  accountName?: string;
+  quoteSentAt?: string;
+  invoiceNumber?: string;
+  invoiceIssuedAt?: string;
   paymentProofName: string;
   paymentProofType: string;
   paymentProofDataUrl: string;
@@ -124,11 +139,24 @@ export type CustomerUpdate = {
   read: boolean;
 };
 
+export type PartnerAccount = {
+  id: string;
+  businessName: string;
+  email: string;
+  phone: string;
+  status: PartnerStatus;
+  approvedAt: string | null;
+  approvalEmailSentAt: string | null;
+  mustChangePassword: boolean;
+  createdAt: string;
+};
+
 export type ShipmentStoreState = {
   shipments: Shipment[];
   paymentRequests: PaymentRequest[];
   customerUpdates: CustomerUpdate[];
   contactRequests: ContactRequest[];
+  partnerAccounts: PartnerAccount[];
   nextSequence: number;
 };
 
@@ -148,16 +176,20 @@ export type TransferRequestInput = BookingInput & {
   serviceTitle: string;
   amount: number;
   note?: string;
-  paymentProofName: string;
-  paymentProofType: string;
-  paymentProofDataUrl: string;
+  paymentProofName?: string;
+  paymentProofType?: string;
+  paymentProofDataUrl?: string;
+  bankName?: string;
+  accountNumber?: string;
+  accountName?: string;
+  quoteSentAt?: string;
 };
 
 export const STATUS_FLOW: ShipmentStatus[] = ["Booked", "Picked up", "In transit", "Out for delivery", "Delivered"];
 
 export const seedShipments: Shipment[] = [
   {
-    ref: "SS-2026-100003",
+    ref: "SS100003",
     airWaybill: "AWB-2026-100003",
     customer: "Northline Foods",
     customerEmail: "ops@northlinefoods.com",
@@ -172,7 +204,7 @@ export const seedShipments: Shipment[] = [
     createdAt: "Mar 7, 2026"
   },
   {
-    ref: "SS-2026-100002",
+    ref: "SS100002",
     airWaybill: "AWB-2026-100002",
     customer: "Prime Mart",
     customerEmail: "shipping@primemart.co",
@@ -187,7 +219,7 @@ export const seedShipments: Shipment[] = [
     createdAt: "Mar 7, 2026"
   },
   {
-    ref: "SS-2026-100001",
+    ref: "SS100001",
     airWaybill: "AWB-2026-100001",
     customer: "BlueWave Retail",
     customerEmail: "dispatch@bluewaveretail.com",
@@ -203,8 +235,29 @@ export const seedShipments: Shipment[] = [
   }
 ];
 
+export function normalizeTrackingNumber(value: string) {
+  const normalized = value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+  if (!normalized) {
+    return "";
+  }
+
+  if (normalized.startsWith("SS")) {
+    return normalized;
+  }
+
+  const digits = normalized.replace(/[^0-9]/g, "");
+  return digits ? `SS${digits}` : normalized;
+}
+
+export function parseTrackingSequence(reference: string) {
+  const normalized = normalizeTrackingNumber(reference);
+  const match = normalized.match(/(\d{6})$/);
+  return Number(match?.[1] ?? "100000");
+}
+
 export function formatTrackingNumber(sequence: number) {
-  return `SS-2026-${sequence.toString().padStart(6, "0")}`;
+  return `SS${sequence.toString().padStart(6, "0")}`;
 }
 
 export function formatAirWaybill(sequence: number) {
@@ -213,6 +266,10 @@ export function formatAirWaybill(sequence: number) {
 
 export function formatPaymentRequestId(sequence: number) {
   return `PAY-2026-${sequence.toString().padStart(6, "0")}`;
+}
+
+export function formatInvoiceNumber(sequence: number) {
+  return `INV-2026-${sequence.toString().padStart(6, "0")}`;
 }
 
 export function formatCreatedAt() {

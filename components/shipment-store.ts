@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   getShipmentSteps,
+  normalizeTrackingNumber,
+  type PartnerAccount,
   previewAirWaybill,
   previewTrackingNumber,
   type BookingInput,
@@ -21,6 +23,7 @@ const emptyStore: ShipmentStoreState = {
   paymentRequests: [],
   customerUpdates: [],
   contactRequests: [],
+  partnerAccounts: [],
   nextSequence: 100001
 };
 
@@ -43,6 +46,7 @@ export type {
   ContactRequestInput,
   CustomerUpdate,
   PaymentRequest,
+  PartnerAccount,
   Shipment,
   ShipmentStatus,
   TransferRequestInput
@@ -72,6 +76,7 @@ export function useShipmentStore() {
         paymentRequests: result.paymentRequests ?? [],
         customerUpdates: result.customerUpdates ?? [],
         contactRequests: result.contactRequests ?? [],
+        partnerAccounts: result.partnerAccounts ?? [],
         nextSequence: result.nextSequence ?? 100001
       });
     } catch {
@@ -118,7 +123,7 @@ export function useShipmentStore() {
       const result = await readJson<{ ok: boolean; paymentRequest: PaymentRequest }>(response);
 
       if (!response.ok || !result.ok) {
-        throw new Error("Could not submit transfer request.");
+        throw new Error("Could not submit shipment request.");
       }
 
       await refreshStore();
@@ -145,7 +150,7 @@ export function useShipmentStore() {
   }, []);
 
   const lookupShipment = useCallback(async (reference: string) => {
-    const normalizedReference = reference.trim().toUpperCase();
+    const normalizedReference = normalizeTrackingNumber(reference);
 
     if (!normalizedReference) {
       return null;
@@ -186,6 +191,24 @@ export function useShipmentStore() {
 
       await refreshStore();
       return result.shipment;
+    },
+    [refreshStore]
+  );
+
+  const sendPaymentRequestQuote = useCallback(
+    async (requestId: string) => {
+      const response = await fetch(`/api/operations/payment-request/${encodeURIComponent(requestId)}/send-quote`, {
+        method: "POST"
+      });
+
+      const result = await readJson<{ ok: boolean; warning?: string }>(response);
+
+      if (!response.ok) {
+        throw new Error("Could not send shipment quote.");
+      }
+
+      await refreshStore();
+      return result.warning;
     },
     [refreshStore]
   );
@@ -266,6 +289,76 @@ export function useShipmentStore() {
     [refreshStore]
   );
 
+  const submitPaymentProof = useCallback(
+    async (
+      requestId: string,
+      input: {
+        paymentProofName: string;
+        paymentProofType: string;
+        paymentProofDataUrl: string;
+      }
+    ) => {
+      const response = await fetch(`/api/operations/payment-request/${encodeURIComponent(requestId)}/submit-proof`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(input)
+      });
+
+      if (!response.ok) {
+        throw new Error("Could not submit payment proof.");
+      }
+
+      await refreshStore();
+    },
+    [refreshStore]
+  );
+
+  const saveRequestCustomerDetails = useCallback(
+    async (
+      requestId: string,
+      input: {
+        customerPhone: string;
+        sender: NonNullable<PaymentRequest["details"]>["sender"];
+        receiver: NonNullable<PaymentRequest["details"]>["receiver"];
+      }
+    ) => {
+      const response = await fetch(`/api/operations/payment-request/${encodeURIComponent(requestId)}/customer-details`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(input)
+      });
+
+      if (!response.ok) {
+        throw new Error("Could not save customer request details.");
+      }
+
+      await refreshStore();
+    },
+    [refreshStore]
+  );
+
+  const approvePartnerAccount = useCallback(
+    async (partnerId: string) => {
+      const response = await fetch(`/api/auth/partners/${encodeURIComponent(partnerId)}/approve`, {
+        method: "POST"
+      });
+
+      const result = await readJson<{ ok: boolean; warning?: string }>(response);
+
+      if (!response.ok) {
+        throw new Error("Could not approve partner account.");
+      }
+
+      await refreshStore();
+      return result.warning;
+    },
+    [refreshStore]
+  );
+
   const updateContactRequest = useCallback(
     async (requestId: string, updates: Partial<ContactRequest>) => {
       const response = await fetch(`/api/operations/contact-request/${encodeURIComponent(requestId)}`, {
@@ -305,13 +398,18 @@ export function useShipmentStore() {
     paymentRequests: store.paymentRequests,
     customerUpdates: store.customerUpdates,
     contactRequests: store.contactRequests,
+    partnerAccounts: store.partnerAccounts,
     nextSequence: store.nextSequence,
     loading,
     refreshStore,
     bookShipment,
     submitTransferRequest,
+    submitPaymentProof,
+    saveRequestCustomerDetails,
     submitContactRequest,
     approvePaymentRequest,
+    sendPaymentRequestQuote,
+    approvePartnerAccount,
     rejectPaymentRequest,
     updateShipmentStatus,
     updateShipmentRecord,

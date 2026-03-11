@@ -9,6 +9,8 @@ type UserSession = {
     name: string;
     email: string;
     phone: string;
+    status: "pending" | "approved";
+    mustChangePassword: boolean;
     createdAt: string;
   };
 };

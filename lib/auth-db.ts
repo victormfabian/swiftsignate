@@ -4,7 +4,10 @@ import { createHash, randomUUID, scryptSync, timingSafeEqual } from "node:crypto
 import { mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
+import { sendCustomerEmail } from "@/lib/customer-email";
 import { getPostgresPool, isSupabaseConfigured } from "@/lib/supabase-postgres";
+
+export type PartnerStatus = "pending" | "approved";
 
 type DatabaseUser = {
   id: string;
@@ -12,6 +15,10 @@ type DatabaseUser = {
   email: string;
   phone: string;
   password_hash: string;
+  status: PartnerStatus;
+  approved_at: string | null;
+  approval_email_sent_at: string | null;
+  must_change_password: boolean | number;
   created_at: string;
 };
 
@@ -28,6 +35,14 @@ type DatabaseSession = {
   token_hash: string;
   role: "user" | "admin";
   account_id: string;
+  expires_at: number;
+  created_at: string;
+};
+
+type DatabasePasswordResetToken = {
+  id: string;
+  user_id: string;
+  token_hash: string;
   expires_at: number;
   created_at: string;
 };
@@ -50,6 +65,7 @@ const DEFAULT_ADMIN_EMAIL = "admin@swiftsignate.com";
 const DEFAULT_ADMIN_PASSWORD = "Superswift@vakes.26";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const ADMIN_SESSION_TTL_MS = 1000 * 60 * 60 * 12;
+const PASSWORD_RESET_TTL_MS = 1000 * 60 * 30;
 
 type SqliteDatabase = import("node:sqlite").DatabaseSync;
 
@@ -58,8 +74,55 @@ const require = createRequire(import.meta.url);
 let sqliteDatabase: SqliteDatabase | null = null;
 let postgresReady: Promise<void> | null = null;
 
+function normalizeUser(row: DatabaseUser): DatabaseUser {
+  return {
+    ...row,
+    must_change_password: Boolean(row.must_change_password)
+  };
+}
+
+export type PartnerAccount = {
+  id: string;
+  businessName: string;
+  email: string;
+  phone: string;
+  status: PartnerStatus;
+  approvedAt: string | null;
+  approvalEmailSentAt: string | null;
+  mustChangePassword: boolean;
+  createdAt: string;
+};
+
+function toPartnerAccount(user: DatabaseUser): PartnerAccount {
+  const normalizedUser = normalizeUser(user);
+
+  return {
+    id: normalizedUser.id,
+    businessName: normalizedUser.name,
+    email: normalizedUser.email,
+    phone: normalizedUser.phone,
+    status: normalizedUser.status,
+    approvedAt: normalizedUser.approved_at,
+    approvalEmailSentAt: normalizedUser.approval_email_sent_at,
+    mustChangePassword: Boolean(normalizedUser.must_change_password),
+    createdAt: normalizedUser.created_at
+  };
+}
+
 function formatTimestamp() {
   return new Date().toISOString();
+}
+
+function buildTemporaryPassword() {
+  return `Swift${Math.floor(100000 + Math.random() * 900000)}!`;
+}
+
+function ensureSqliteColumn(db: SqliteDatabase, table: string, column: string, definition: string) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+
+  if (!columns.some((current) => current.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }
 
 function getSqliteDatabase() {
@@ -77,6 +140,10 @@ function getSqliteDatabase() {
       email TEXT NOT NULL UNIQUE,
       phone TEXT NOT NULL,
       password_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'approved',
+      approved_at TEXT,
+      approval_email_sent_at TEXT,
+      must_change_password INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
 
@@ -96,7 +163,20 @@ function getSqliteDatabase() {
       expires_at INTEGER NOT NULL,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
   `);
+
+  ensureSqliteColumn(sqliteDatabase, "users", "status", "TEXT NOT NULL DEFAULT 'approved'");
+  ensureSqliteColumn(sqliteDatabase, "users", "approved_at", "TEXT");
+  ensureSqliteColumn(sqliteDatabase, "users", "approval_email_sent_at", "TEXT");
+  ensureSqliteColumn(sqliteDatabase, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0");
 
   seedDefaultAdminSqlite(sqliteDatabase);
 
@@ -118,9 +198,17 @@ async function ensurePostgresSchema() {
           email TEXT NOT NULL UNIQUE,
           phone TEXT NOT NULL,
           password_hash TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'approved',
+          approved_at TEXT,
+          approval_email_sent_at TEXT,
+          must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
           created_at TEXT NOT NULL
         )
       `);
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT \'approved\'');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS approved_at TEXT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS approval_email_sent_at TEXT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE');
       await pool.query(`
         CREATE TABLE IF NOT EXISTS admins (
           id TEXT PRIMARY KEY,
@@ -136,6 +224,15 @@ async function ensurePostgresSchema() {
           token_hash TEXT NOT NULL UNIQUE,
           role TEXT NOT NULL,
           account_id TEXT NOT NULL,
+          expires_at BIGINT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+      `);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          token_hash TEXT NOT NULL UNIQUE,
           expires_at BIGINT NOT NULL,
           created_at TEXT NOT NULL
         )
@@ -220,6 +317,34 @@ function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
+async function getUserByEmailRecord(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    const result = await pool.query<DatabaseUser>("SELECT * FROM users WHERE email = $1 LIMIT 1", [normalizedEmail]);
+    return result.rows[0] ? normalizeUser(result.rows[0]) : null;
+  }
+
+  const db = getSqliteDatabase();
+  const user = (db.prepare("SELECT * FROM users WHERE email = ? LIMIT 1").get(normalizedEmail) as DatabaseUser | undefined) ?? null;
+  return user ? normalizeUser(user) : null;
+}
+
+async function getUserByIdRecord(userId: string) {
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    const result = await pool.query<DatabaseUser>("SELECT * FROM users WHERE id = $1 LIMIT 1", [userId]);
+    return result.rows[0] ? normalizeUser(result.rows[0]) : null;
+  }
+
+  const db = getSqliteDatabase();
+  const user = (db.prepare("SELECT * FROM users WHERE id = ? LIMIT 1").get(userId) as DatabaseUser | undefined) ?? null;
+  return user ? normalizeUser(user) : null;
+}
+
 export async function createUser(input: { name: string; email: string; phone: string; password: string }) {
   const normalizedEmail = input.email.trim().toLowerCase();
 
@@ -241,17 +366,30 @@ export async function createUser(input: { name: string; email: string; phone: st
       email: normalizedEmail,
       phone: input.phone.trim(),
       password_hash: hashPassword(input.password),
+      status: "approved",
+      approved_at: formatTimestamp(),
+      approval_email_sent_at: formatTimestamp(),
+      must_change_password: false,
       created_at: formatTimestamp()
     };
 
-    await pool.query("INSERT INTO users (id, name, email, phone, password_hash, created_at) VALUES ($1, $2, $3, $4, $5, $6)", [
+    await pool.query(
+      `INSERT INTO users (
+        id, name, email, phone, password_hash, status, approved_at, approval_email_sent_at, must_change_password, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
       user.id,
       user.name,
       user.email,
       user.phone,
       user.password_hash,
+      user.status,
+      user.approved_at,
+      user.approval_email_sent_at,
+      false,
       user.created_at
-    ]);
+      ]
+    );
 
     return {
       ok: true as const,
@@ -277,15 +415,27 @@ export async function createUser(input: { name: string; email: string; phone: st
     email: normalizedEmail,
     phone: input.phone.trim(),
     password_hash: hashPassword(input.password),
+    status: "approved",
+    approved_at: formatTimestamp(),
+    approval_email_sent_at: formatTimestamp(),
+    must_change_password: false,
     created_at: formatTimestamp()
   };
 
-  db.prepare("INSERT INTO users (id, name, email, phone, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(
+  db.prepare(
+    `INSERT INTO users (
+      id, name, email, phone, password_hash, status, approved_at, approval_email_sent_at, must_change_password, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
     user.id,
     user.name,
     user.email,
     user.phone,
     user.password_hash,
+    user.status,
+    user.approved_at,
+    user.approval_email_sent_at,
+    0,
     user.created_at
   );
 
@@ -295,30 +445,276 @@ export async function createUser(input: { name: string; email: string; phone: st
   };
 }
 
-export async function authenticateUser(input: { email: string; password: string }) {
+export async function createPartnerApplication(input: { businessName: string; email: string }) {
   const normalizedEmail = input.email.trim().toLowerCase();
+  const businessName = input.businessName.trim();
+
+  const existingUser = await getUserByEmailRecord(normalizedEmail);
+
+  if (existingUser) {
+    return {
+      ok: false as const,
+      message:
+        existingUser.status === "approved"
+          ? "A partner account already exists with that email address."
+          : "That business email is already waiting for admin approval."
+    };
+  }
+
+  const user: DatabaseUser = {
+    id: randomUUID(),
+    name: businessName,
+    email: normalizedEmail,
+    phone: "",
+    password_hash: hashPassword(randomUUID()),
+    status: "pending",
+    approved_at: null,
+    approval_email_sent_at: null,
+    must_change_password: false,
+    created_at: formatTimestamp()
+  };
 
   if (isSupabaseConfigured()) {
     await ensurePostgresSchema();
     const pool = getPostgresPool();
-    const result = await pool.query<DatabaseUser>("SELECT * FROM users WHERE email = $1 LIMIT 1", [normalizedEmail]);
-    const user = result.rows[0];
+    await pool.query(
+      `INSERT INTO users (
+        id, name, email, phone, password_hash, status, approved_at, approval_email_sent_at, must_change_password, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        user.id,
+        user.name,
+        user.email,
+        user.phone,
+        user.password_hash,
+        user.status,
+        user.approved_at,
+        user.approval_email_sent_at,
+        false,
+        user.created_at
+      ]
+    );
+  } else {
+    const db = getSqliteDatabase();
+    db.prepare(
+      `INSERT INTO users (
+        id, name, email, phone, password_hash, status, approved_at, approval_email_sent_at, must_change_password, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      user.id,
+      user.name,
+      user.email,
+      user.phone,
+      user.password_hash,
+      user.status,
+      user.approved_at,
+      user.approval_email_sent_at,
+      0,
+      user.created_at
+    );
+  }
 
-    if (!user || !verifyPassword(input.password, user.password_hash)) {
-      return null;
-    }
+  await sendCustomerEmail({
+    to: user.email,
+    subject: "Swift Signate partner registration received",
+    text: [
+      `Hello ${user.name},`,
+      "",
+      "Your partner access request has been received.",
+      "A Swift Signate admin will review your business registration shortly.",
+      "",
+      "You will receive another email with your temporary password once your access is approved.",
+      "",
+      "Swift Signate"
+    ].join("\n")
+  });
 
+  return {
+    ok: true as const,
+    partner: toPartnerAccount(user)
+  };
+}
+
+export async function authenticateUser(input: { email: string; password: string }) {
+  const user = await getUserByEmailRecord(input.email);
+
+  if (!user) {
+    return {
+      ok: false as const,
+      reason: "credentials" as const
+    };
+  }
+
+  if (user.status !== "approved") {
+    return {
+      ok: false as const,
+      reason: "pending" as const
+    };
+  }
+
+  if (!verifyPassword(input.password, user.password_hash)) {
+    return {
+      ok: false as const,
+      reason: "credentials" as const
+    };
+  }
+
+  return {
+    ok: true as const,
+    user
+  };
+}
+
+export async function findOrCreateGoogleUser(input: { email: string; name: string }) {
+  const normalizedEmail = input.email.trim().toLowerCase();
+  const existingUser = await getUserByEmailRecord(normalizedEmail);
+
+  if (existingUser) {
+    return existingUser;
+  }
+
+  const user: DatabaseUser = {
+    id: randomUUID(),
+    name: input.name.trim() || normalizedEmail.split("@")[0] || "Google User",
+    email: normalizedEmail,
+    phone: "",
+    password_hash: hashPassword(randomUUID()),
+    status: "approved",
+    approved_at: formatTimestamp(),
+    approval_email_sent_at: formatTimestamp(),
+    must_change_password: false,
+    created_at: formatTimestamp()
+  };
+
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    await pool.query(
+      `INSERT INTO users (
+        id, name, email, phone, password_hash, status, approved_at, approval_email_sent_at, must_change_password, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        user.id,
+        user.name,
+        user.email,
+        user.phone,
+        user.password_hash,
+        user.status,
+        user.approved_at,
+        user.approval_email_sent_at,
+        false,
+        user.created_at
+      ]
+    );
     return user;
   }
 
   const db = getSqliteDatabase();
-  const user = db.prepare("SELECT * FROM users WHERE email = ? LIMIT 1").get(normalizedEmail) as DatabaseUser | undefined;
+  db.prepare(
+    `INSERT INTO users (
+      id, name, email, phone, password_hash, status, approved_at, approval_email_sent_at, must_change_password, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    user.id,
+    user.name,
+    user.email,
+    user.phone,
+    user.password_hash,
+    user.status,
+    user.approved_at,
+    user.approval_email_sent_at,
+    0,
+    user.created_at
+  );
 
-  if (!user || !verifyPassword(input.password, user.password_hash)) {
+  return user;
+}
+
+export async function createPasswordResetToken(email: string) {
+  const user = await getUserByEmailRecord(email);
+
+  if (!user) {
     return null;
   }
 
-  return user;
+  const token = randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+  const tokenRecord: DatabasePasswordResetToken = {
+    id: randomUUID(),
+    user_id: user.id,
+    token_hash: hashToken(token),
+    expires_at: Date.now() + PASSWORD_RESET_TTL_MS,
+    created_at: formatTimestamp()
+  };
+
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    await pool.query("DELETE FROM password_reset_tokens WHERE user_id = $1 OR expires_at <= $2", [user.id, Date.now()]);
+    await pool.query(
+      "INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at, created_at) VALUES ($1, $2, $3, $4, $5)",
+      [tokenRecord.id, tokenRecord.user_id, tokenRecord.token_hash, tokenRecord.expires_at, tokenRecord.created_at]
+    );
+  } else {
+    const db = getSqliteDatabase();
+    db.prepare("DELETE FROM password_reset_tokens WHERE user_id = ? OR expires_at <= ?").run(user.id, Date.now());
+    db.prepare("INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)").run(
+      tokenRecord.id,
+      tokenRecord.user_id,
+      tokenRecord.token_hash,
+      tokenRecord.expires_at,
+      tokenRecord.created_at
+    );
+  }
+
+  return {
+    token,
+    user
+  };
+}
+
+export async function resetUserPasswordWithToken(token: string, nextPassword: string) {
+  const tokenHash = hashToken(token.trim());
+
+  if (!tokenHash) {
+    return null;
+  }
+
+  let resetToken: DatabasePasswordResetToken | null = null;
+
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    await pool.query("DELETE FROM password_reset_tokens WHERE expires_at <= $1", [Date.now()]);
+    const tokenResult = await pool.query<DatabasePasswordResetToken>(
+      "SELECT * FROM password_reset_tokens WHERE token_hash = $1 LIMIT 1",
+      [tokenHash]
+    );
+    resetToken = tokenResult.rows[0] ?? null;
+
+    if (!resetToken) {
+      return null;
+    }
+
+    const passwordHash = hashPassword(nextPassword);
+    await pool.query("UPDATE users SET password_hash = $1, must_change_password = $2 WHERE id = $3", [passwordHash, false, resetToken.user_id]);
+    await pool.query("DELETE FROM password_reset_tokens WHERE user_id = $1", [resetToken.user_id]);
+  } else {
+    const db = getSqliteDatabase();
+    db.prepare("DELETE FROM password_reset_tokens WHERE expires_at <= ?").run(Date.now());
+    resetToken = (db.prepare("SELECT * FROM password_reset_tokens WHERE token_hash = ? LIMIT 1").get(tokenHash) as
+      | DatabasePasswordResetToken
+      | undefined) ?? null;
+
+    if (!resetToken) {
+      return null;
+    }
+
+    const passwordHash = hashPassword(nextPassword);
+    db.prepare("UPDATE users SET password_hash = ?, must_change_password = ? WHERE id = ?").run(passwordHash, 0, resetToken.user_id);
+    db.prepare("DELETE FROM password_reset_tokens WHERE user_id = ?").run(resetToken.user_id);
+  }
+
+  return getUserByIdRecord(resetToken.user_id);
 }
 
 export async function authenticateAdmin(input: { email: string; password: string }) {
@@ -419,7 +815,7 @@ export async function getSessionByToken(token: string): Promise<DatabaseSessionR
 
     if (session.role === "user") {
       const userResult = await pool.query<DatabaseUser>("SELECT * FROM users WHERE id = $1 LIMIT 1", [session.account_id]);
-      const user = userResult.rows[0];
+      const user = userResult.rows[0] ? normalizeUser(userResult.rows[0]) : null;
 
       if (!user) {
         return null;
@@ -469,7 +865,7 @@ export async function getSessionByToken(token: string): Promise<DatabaseSessionR
     return {
       role: "user",
       session,
-      user
+      user: normalizeUser(user)
     };
   }
 
@@ -490,4 +886,118 @@ export async function getSessionByToken(token: string): Promise<DatabaseSessionR
 
 export function getDefaultAdminEmail() {
   return DEFAULT_ADMIN_EMAIL;
+}
+
+export async function listPartnerAccounts() {
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    const result = await pool.query<DatabaseUser>(
+      "SELECT * FROM users ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, created_at DESC"
+    );
+    return result.rows.map((row) => toPartnerAccount(row));
+  }
+
+  const db = getSqliteDatabase();
+  const users = db.prepare("SELECT * FROM users ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, created_at DESC").all() as DatabaseUser[];
+  return users.map((user) => toPartnerAccount(user));
+}
+
+export async function approvePartnerAccount(partnerId: string) {
+  const user = await getUserByIdRecord(partnerId);
+
+  if (!user) {
+    return null;
+  }
+
+  const temporaryPassword = buildTemporaryPassword();
+  const approvedAt = formatTimestamp();
+
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    await pool.query(
+      `UPDATE users
+       SET status = $1,
+           password_hash = $2,
+           approved_at = $3,
+           approval_email_sent_at = $4,
+           must_change_password = $5
+       WHERE id = $6`,
+      ["approved", hashPassword(temporaryPassword), approvedAt, approvedAt, true, user.id]
+    );
+  } else {
+    const db = getSqliteDatabase();
+    db.prepare(
+      `UPDATE users
+       SET status = ?, password_hash = ?, approved_at = ?, approval_email_sent_at = ?, must_change_password = ?
+       WHERE id = ?`
+    ).run("approved", hashPassword(temporaryPassword), approvedAt, approvedAt, 1, user.id);
+  }
+
+  const approvedUser = await getUserByIdRecord(user.id);
+
+  if (!approvedUser) {
+    return null;
+  }
+
+  await sendCustomerEmail({
+    to: approvedUser.email,
+    subject: "Swift Signate partner access approved",
+    text: [
+      `Hello ${approvedUser.name},`,
+      "",
+      "Your Swift Signate partner access has been approved.",
+      `Temporary password: ${temporaryPassword}`,
+      "",
+      "Sign in with your business email and this temporary password.",
+      "You will be asked to set your own password and complete your profile after sign in.",
+      "",
+      "Swift Signate"
+    ].join("\n")
+  });
+
+  return {
+    partner: toPartnerAccount(approvedUser),
+    temporaryPassword
+  };
+}
+
+export async function completePartnerProfile(
+  userId: string,
+  input: {
+    phone: string;
+    password: string;
+  }
+) {
+  const user = await getUserByIdRecord(userId);
+
+  if (!user || user.status !== "approved") {
+    return null;
+  }
+
+  const passwordHash = hashPassword(input.password);
+  const phone = input.phone.trim();
+
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    await pool.query("UPDATE users SET phone = $1, password_hash = $2, must_change_password = $3 WHERE id = $4", [
+      phone,
+      passwordHash,
+      false,
+      userId
+    ]);
+  } else {
+    const db = getSqliteDatabase();
+    db.prepare("UPDATE users SET phone = ?, password_hash = ?, must_change_password = ? WHERE id = ?").run(
+      phone,
+      passwordHash,
+      0,
+      userId
+    );
+  }
+
+  const nextUser = await getUserByIdRecord(userId);
+  return nextUser ? toPartnerAccount(nextUser) : null;
 }

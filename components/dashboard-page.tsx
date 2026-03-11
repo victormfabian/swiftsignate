@@ -6,18 +6,18 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { AuthPanel } from "@/components/auth-panel";
 import { useAuthSession } from "@/components/auth-session";
+import { IconGlyph } from "@/components/icon-glyph";
 import { LogoMark } from "@/components/logo-mark";
 import { getShipmentSteps, useShipmentStore, type Shipment } from "@/components/shipment-store";
 import { useSiteContentStore } from "@/components/site-content-store";
-import type { BookingRecordDetails } from "@/lib/shipment-model";
+import { defaultBookingConfig } from "@/lib/site-content-model";
+import { normalizeTrackingNumber, type BookingRecordDetails } from "@/lib/shipment-model";
 
 type DashboardTab = "book" | "track";
-type BookingStep = 1 | 2 | 3 | 4 | 5;
+type BookingStep = 1 | 2 | 3;
 type ShipperType = "private" | "business";
 type WeightUnit = "kg" | "lb";
 type DimensionUnit = "cm" | "in";
-type CheckoutPaymentMethod = "transfer" | "paystack" | "";
-type QuoteSort = "fastest" | "lowest" | "premium";
 type DashboardDisplayMode = "page" | "modal";
 
 type BookingForm = {
@@ -60,56 +60,19 @@ type TransferProof = {
   dataUrl: string;
 };
 
-type QuoteOption = {
-  id: string;
-  title: string;
-  etaHeadline: string;
-  etaDetail: string;
-  pickupNote: string;
-  operator: string;
-  price: number;
+type QuotePricingContext = {
+  packageCount: number;
+  chargeableWeight: number;
+  packagingAdjustment: number;
+  shipperMarkup: number;
+  liabilitySurcharge: number;
+  residentialSurcharge: number;
+  packageSurcharge: number;
+  extrasTotal: number;
+  inputWeightUnit: WeightUnit;
 };
 
 const CUSTOMER_EMAIL_KEY = "swift-signate-customer-email";
-
-const COUNTRY_OPTIONS = [
-  "Nigeria",
-  "Ghana",
-  "Kenya",
-  "South Africa",
-  "United Arab Emirates",
-  "United States of America",
-  "United Kingdom",
-  "Canada",
-  "Germany"
-];
-
-const ORIGIN_SUGGESTIONS = ["Nigeria", "Ghana", "Kenya", "South Africa"];
-const DESTINATION_SUGGESTIONS = [
-  "United States of America",
-  "United Kingdom",
-  "United Arab Emirates",
-  "Canada"
-];
-const CITY_SUGGESTIONS: Record<string, string[]> = {
-  "United States of America": ["New York", "Houston", "Atlanta"],
-  "United Kingdom": ["London", "Manchester", "Birmingham"],
-  "United Arab Emirates": ["Dubai", "Abu Dhabi", "Sharjah"],
-  Canada: ["Toronto", "Vancouver", "Calgary"],
-  Nigeria: ["Lagos", "Abuja", "Port Harcourt"],
-  Ghana: ["Accra", "Kumasi", "Tema"],
-  Kenya: ["Nairobi", "Mombasa", "Kisumu"],
-  Germany: ["Berlin", "Hamburg", "Frankfurt"]
-};
-const PACKAGE_COUNT_SUGGESTIONS = [1, 2, 3, 4];
-
-const PACKAGING_OPTIONS = [
-  { value: "Your Packaging", tone: "custom" },
-  { value: "Document Envelope", tone: "envelope" },
-  { value: "Standard Box", tone: "box" },
-  { value: "Large Carton", tone: "carton" },
-  { value: "Palletized Freight", tone: "pallet" }
-] as const;
 
 let packageEntrySeed = 1;
 
@@ -124,7 +87,7 @@ function createPackageEntry(): PackageEntry {
 }
 
 const INITIAL_BOOKING_FORM: BookingForm = {
-  shipperType: "",
+  shipperType: "business",
   fromCountry: "",
   fromCity: "",
   toCountry: "",
@@ -149,11 +112,41 @@ const EMPTY_CONTACT_DETAILS: ContactDetails = {
   residential: false
 };
 
-const EMPTY_TRANSFER_PROOF: TransferProof = {
-  name: "",
-  type: "",
-  dataUrl: ""
-};
+function cloneContactDetails(details: ContactDetails): ContactDetails {
+  return {
+    ...details
+  };
+}
+
+function isPartyDetailsComplete(details: ContactDetails, options?: { requirePostalCode?: boolean }) {
+  const requiredFields = [details.name, details.email, details.phone, details.address1, details.city];
+
+  if (options?.requirePostalCode) {
+    requiredFields.push(details.postalCode);
+  }
+
+  return requiredFields.every((value) => value.trim());
+}
+
+function requestHasCompleteContacts(details?: BookingRecordDetails | null) {
+  if (!details) {
+    return false;
+  }
+
+  return (
+    isPartyDetailsComplete({
+      ...EMPTY_CONTACT_DETAILS,
+      ...details.sender
+    }) &&
+    isPartyDetailsComplete(
+      {
+        ...EMPTY_CONTACT_DETAILS,
+        ...details.receiver
+      },
+      { requirePostalCode: true }
+    )
+  );
+}
 
 function statusClasses(status: string) {
   switch (status) {
@@ -165,6 +158,24 @@ function statusClasses(status: string) {
       return "border-sky-300 bg-white text-sky-700";
     case "Picked up":
       return "border-amber-300 bg-white text-amber-700";
+    default:
+      return "border-neutral-300 bg-white text-neutral-600";
+  }
+}
+
+function requestStatusClasses(status: string) {
+  switch (status) {
+    case "Inquiry received":
+      return "border-sky-200 bg-sky-50 text-sky-700";
+    case "Quote sent":
+      return "border-violet-200 bg-violet-50 text-violet-700";
+    case "Payment submitted":
+    case "Awaiting verification":
+      return "border-amber-200 bg-amber-50 text-amber-700";
+    case "Approved":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "Rejected":
+      return "border-rose-200 bg-rose-50 text-rose-700";
     default:
       return "border-neutral-300 bg-white text-neutral-600";
   }
@@ -251,6 +262,17 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
+function formatRatePerKg(value: number) {
+  return `${formatCurrency(value)} / kg`;
+}
+
+function formatWeight(value: number) {
+  return `${new Intl.NumberFormat("en-NG", {
+    minimumFractionDigits: value >= 10 ? 0 : 1,
+    maximumFractionDigits: 1
+  }).format(value)} kg`;
+}
+
 function formatShipmentDate() {
   return new Date().toLocaleDateString("en-GB", {
     day: "2-digit",
@@ -259,81 +281,93 @@ function formatShipmentDate() {
   });
 }
 
-function buildQuoteOptions(form: BookingForm, packages: PackageEntry[], sort: QuoteSort) {
+function buildQuotePricingContext(
+  form: BookingForm,
+  packages: PackageEntry[],
+  bookingConfig: typeof defaultBookingConfig
+) {
   const weightMultiplier = form.weightUnit === "lb" ? 0.453592 : 1;
   const dimensionMultiplier = form.dimensionUnit === "in" ? 2.54 : 1;
   const packageCount = Math.max(packages.length, 1);
   const totalActualWeight = packages.reduce((sum, currentPackage) => {
     const normalizedWeight = (Number(currentPackage.weight) || 0) * weightMultiplier;
 
-    return sum + Math.max(normalizedWeight, 0.5);
+    return sum + Math.max(normalizedWeight, bookingConfig.pricing.minimumChargeableWeight || 0.5);
   }, 0);
   const totalVolumetricWeight = packages.reduce((sum, currentPackage) => {
-    const length = Math.max((Number(currentPackage.length) || 1) * dimensionMultiplier, 1);
-    const width = Math.max((Number(currentPackage.width) || 1) * dimensionMultiplier, 1);
-    const height = Math.max((Number(currentPackage.height) || 1) * dimensionMultiplier, 1);
+    const lengthValue = Number(currentPackage.length);
+    const widthValue = Number(currentPackage.width);
+    const heightValue = Number(currentPackage.height);
 
-    return sum + (length * width * height) / 5000;
+    if (!(lengthValue > 0 && widthValue > 0 && heightValue > 0)) {
+      return sum;
+    }
+
+    const length = Math.max(lengthValue * dimensionMultiplier, 1);
+    const width = Math.max(widthValue * dimensionMultiplier, 1);
+    const height = Math.max(heightValue * dimensionMultiplier, 1);
+
+    return sum + (length * width * height) / Math.max(bookingConfig.pricing.volumetricDivisor || 5000, 1);
   }, 0);
   const chargeableWeight = Math.max(totalActualWeight, totalVolumetricWeight);
+  const shipperMarkup = form.shipperType === "business" ? bookingConfig.pricing.businessMarkup : 0;
+  const packagingAdjustment =
+    bookingConfig.packagingOptions.find((option) => option.label === form.packagingType)?.priceAdjustment ?? 0;
+  const liabilitySurcharge = form.higherLiability ? packageCount * bookingConfig.pricing.liabilitySurcharge : 0;
+  const residentialSurcharge = form.residential ? bookingConfig.pricing.residentialAddressSurcharge : 0;
+  const packageSurcharge = Math.max(packageCount - 1, 0) * bookingConfig.pricing.additionalPackageSurcharge;
+  const extrasTotal =
+    shipperMarkup +
+    packagingAdjustment +
+    liabilitySurcharge +
+    residentialSurcharge +
+    packageSurcharge;
 
-  const routeFactorMap: Record<string, number> = {
-    Nigeria: 1,
-    Ghana: 1.05,
-    Kenya: 1.16,
-    "South Africa": 1.18,
-    "United Arab Emirates": 1.22,
-    "United States of America": 1.45,
-    "United Kingdom": 1.34,
-    Canada: 1.38,
-    Germany: 1.3
+  return {
+    packageCount,
+    chargeableWeight,
+    packagingAdjustment,
+    shipperMarkup,
+    liabilitySurcharge,
+    residentialSurcharge,
+    packageSurcharge,
+    extrasTotal,
+    inputWeightUnit: form.weightUnit
   };
+}
 
-  const routeFactor = routeFactorMap[form.toCountry] ?? 1.2;
-  const shipperMarkup = form.shipperType === "business" ? 180000 : 0;
-  const documentsDiscount = form.packagingType === "Document Envelope" ? 160000 : 0;
-  const liabilitySurcharge = form.higherLiability ? packageCount * 95000 : 0;
-  const base = chargeableWeight * 235000 * routeFactor + shipperMarkup + liabilitySurcharge - documentsDiscount;
-
-  const options: QuoteOption[] = [
-    {
-      id: "express-priority",
-      title: "Swift Express Priority",
-      etaHeadline: "Thu, 12 Mar",
-      etaDetail: "latest by 12:00 pm",
-      pickupNote: "Book today before 2:00 pm for same-day pickup scheduling.",
-      operator: "Operated by Swift Signate Air",
-      price: base + 780000.55
-    },
-    {
-      id: "express-economy",
-      title: "Swift Express Saver",
-      etaHeadline: "Thu, 12 Mar",
-      etaDetail: "latest by end of day",
-      pickupNote: "Book today before 2:00 pm for next available line-haul dispatch.",
-      operator: "Operated by Swift Signate Express",
-      price: base + 642000.25
-    },
-    {
-      id: "freight-value",
-      title: "Swift Freight Value",
-      etaHeadline: "Fri, 13 Mar",
-      etaDetail: "before 6:00 pm",
-      pickupNote: "Economy freight option with scheduled consolidation handling.",
-      operator: "Operated by Swift Signate Cargo",
-      price: base + 518000.1
-    }
+function buildQuoteHighlights(form: BookingForm, pricingContext: QuotePricingContext) {
+  const highlights = [
+    `${pricingContext.packageCount} ${pricingContext.packageCount === 1 ? "package" : "packages"}`,
+    `${formatWeight(pricingContext.chargeableWeight)} chargeable`,
+    pricingContext.inputWeightUnit === "lb" ? "Weight converted from lb" : "Weight captured in kg"
   ];
 
-  if (sort === "lowest") {
-    return [...options].sort((left, right) => left.price - right.price);
+  if (form.packagingType) {
+    highlights.push(form.packagingType);
   }
 
-  if (sort === "premium") {
-    return [...options].sort((left, right) => right.price - left.price);
+  if (form.higherLiability) {
+    highlights.push("Extra cover");
   }
 
-  return options;
+  if (form.residential) {
+    highlights.push("Residential delivery");
+  }
+
+  if (form.shipperType === "business") {
+    highlights.push("Business shipment");
+  }
+
+  return highlights;
+}
+
+function PricingPill({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-black/8 bg-[#fffaf4] px-3 py-1.5 text-xs font-medium text-neutral-700">
+      {label}
+    </span>
+  );
 }
 
 function QuotePlane() {
@@ -346,55 +380,25 @@ function QuotePlane() {
   );
 }
 
-function PackagingIllustration({ type }: { type: BookingForm["packagingType"] }) {
-  const option = PACKAGING_OPTIONS.find((item) => item.value === type) ?? PACKAGING_OPTIONS[0];
-
-  switch (option.tone) {
-    case "envelope":
-      return (
-        <svg viewBox="0 0 120 90" className="h-20 w-24" fill="none">
-          <rect x="18" y="18" width="84" height="54" rx="8" fill="#fff7ed" stroke="#fdba74" strokeWidth="2" />
-          <path d="M18 26 60 50 102 26" stroke="#f97316" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M18 63 46 43M102 63 74 43" stroke="#fed7aa" strokeWidth="3" strokeLinecap="round" />
-        </svg>
-      );
-    case "box":
-      return (
-        <svg viewBox="0 0 120 90" className="h-20 w-24" fill="none">
-          <path d="M26 30 60 18l34 12-34 14-34-14Z" fill="#fdba74" stroke="#f59e0b" strokeWidth="2" />
-          <path d="M26 30v30l34 14V44L26 30Z" fill="#f97316" stroke="#ea580c" strokeWidth="2" />
-          <path d="M60 44v30l34-14V30L60 44Z" fill="#fb923c" stroke="#ea580c" strokeWidth="2" />
-        </svg>
-      );
-    case "carton":
-      return (
-        <svg viewBox="0 0 120 90" className="h-20 w-24" fill="none">
-          <path d="M18 34 60 20l42 14-42 18-42-18Z" fill="#fed7aa" stroke="#f59e0b" strokeWidth="2" />
-          <path d="M18 34v28l42 18V52L18 34Z" fill="#fb923c" stroke="#ea580c" strokeWidth="2" />
-          <path d="M60 52v28l42-18V34L60 52Z" fill="#fdba74" stroke="#ea580c" strokeWidth="2" />
-          <path d="M48 26 70 36" stroke="#fff7ed" strokeWidth="4" strokeLinecap="round" />
-        </svg>
-      );
-    case "pallet":
-      return (
-        <svg viewBox="0 0 120 90" className="h-20 w-24" fill="none">
-          <rect x="22" y="20" width="30" height="24" rx="4" fill="#fb923c" stroke="#ea580c" strokeWidth="2" />
-          <rect x="52" y="16" width="34" height="28" rx="4" fill="#fdba74" stroke="#f59e0b" strokeWidth="2" />
-          <rect x="30" y="44" width="58" height="10" rx="3" fill="#7c5c34" />
-          <rect x="24" y="56" width="70" height="6" rx="2" fill="#a16207" />
-          <rect x="28" y="62" width="8" height="10" rx="2" fill="#7c5c34" />
-          <rect x="56" y="62" width="8" height="10" rx="2" fill="#7c5c34" />
-          <rect x="82" y="62" width="8" height="10" rx="2" fill="#7c5c34" />
-        </svg>
-      );
-    default:
-      return (
-        <svg viewBox="0 0 120 90" className="h-20 w-24" fill="none">
-          <path d="M28 46c0-16 13-29 29-29h10c14 0 25 11 25 25 0 13-10 23-23 25l-1 10-12-10c-16-2-28-15-28-31Z" fill="#fff7ed" stroke="#fdba74" strokeWidth="2" />
-          <path d="M54 37h18M54 47h12" stroke="#f97316" strokeWidth="3" strokeLinecap="round" />
-        </svg>
-      );
-  }
+function PackagingPreview({
+  icon,
+  label
+}: {
+  icon: string;
+  label: string;
+}) {
+  return (
+    <div className="flex h-[88px] w-[120px] flex-col items-center justify-center gap-2 rounded-[20px] border border-black/10 bg-white px-3 shadow-[0_10px_20px_rgba(140,110,78,0.05)]">
+      <div className="flex h-10 w-10 items-center justify-center text-ember">
+        <IconGlyph
+          icon={icon}
+          className="h-10 w-10"
+          fallbackClassName="flex h-10 w-10 items-center justify-center rounded-2xl border border-black/10 bg-white text-[9px] font-semibold uppercase tracking-[0.18em] text-neutral-600"
+        />
+      </div>
+      <div className="text-center text-[11px] font-medium leading-4 text-neutral-600">{label}</div>
+    </div>
+  );
 }
 
 type DashboardPageProps = {
@@ -414,14 +418,47 @@ export function DashboardPage({
 }: DashboardPageProps) {
   const {
     shipments,
+    paymentRequests,
     customerUpdates,
-    bookShipment,
     submitTransferRequest,
+    submitPaymentProof,
+    saveRequestCustomerDetails,
     lookupShipment,
     markCustomerUpdateRead
   } = useShipmentStore();
   const { currentUser, isUserAuthenticated, loading: authLoading, refreshSession, signOut } = useAuthSession();
   const { content } = useSiteContentStore();
+  const bookingConfig = {
+    ...defaultBookingConfig,
+    ...content.bookingConfig,
+    routeCountries:
+      content.bookingConfig.routeCountries.length > 0
+        ? content.bookingConfig.routeCountries
+        : defaultBookingConfig.routeCountries,
+    routeRates:
+      content.bookingConfig.routeRates.length > 0
+        ? content.bookingConfig.routeRates
+        : defaultBookingConfig.routeRates,
+    packageCountSuggestions:
+      content.bookingConfig.packageCountSuggestions.length > 0
+        ? content.bookingConfig.packageCountSuggestions
+        : defaultBookingConfig.packageCountSuggestions,
+    packagingOptions:
+      content.bookingConfig.packagingOptions.length > 0
+        ? content.bookingConfig.packagingOptions
+        : defaultBookingConfig.packagingOptions,
+    deliveryOptions:
+      content.bookingConfig.deliveryOptions.length > 0
+        ? content.bookingConfig.deliveryOptions
+        : defaultBookingConfig.deliveryOptions,
+    pricing: {
+      ...defaultBookingConfig.pricing,
+      ...content.bookingConfig.pricing
+    }
+  };
+  const countryOptions = bookingConfig.routeCountries.map((country) => country.name);
+  const pickupSuggestions = countryOptions;
+  const destinationSuggestions = countryOptions;
   const shipmentSteps = getShipmentSteps();
   const router = useRouter();
   const isModal = displayMode === "modal";
@@ -429,22 +466,29 @@ export function DashboardPage({
 
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab);
   const [bookingStep, setBookingStep] = useState<BookingStep>(1);
-  const [quoteSort, setQuoteSort] = useState<QuoteSort>("fastest");
   const [notice, setNotice] = useState("");
-  const [trackingInput, setTrackingInput] = useState(initialTrackingRef ?? "");
-  const [trackingQuery, setTrackingQuery] = useState(initialTrackingRef ?? "");
+  const [trackingInput, setTrackingInput] = useState(initialTrackingRef ? normalizeTrackingNumber(initialTrackingRef) : "");
+  const [trackingQuery, setTrackingQuery] = useState(initialTrackingRef ? normalizeTrackingNumber(initialTrackingRef) : "");
   const [trackingResult, setTrackingResult] = useState<Shipment | null>(null);
   const [trackingLookupStarted, setTrackingLookupStarted] = useState(Boolean(initialTrackingRef));
   const [trackingLookupLoading, setTrackingLookupLoading] = useState(false);
   const [bookingForm, setBookingForm] = useState<BookingForm>(INITIAL_BOOKING_FORM);
   const [packageEntries, setPackageEntries] = useState<PackageEntry[]>([]);
-  const [selectedQuote, setSelectedQuote] = useState<QuoteOption | null>(null);
   const [senderDetails, setSenderDetails] = useState<ContactDetails>(EMPTY_CONTACT_DETAILS);
   const [receiverDetails, setReceiverDetails] = useState<ContactDetails>(EMPTY_CONTACT_DETAILS);
-  const [paymentMethod, setPaymentMethod] = useState<CheckoutPaymentMethod>("");
   const [transferSubmitted, setTransferSubmitted] = useState(false);
-  const [transferProof, setTransferProof] = useState<TransferProof>(EMPTY_TRANSFER_PROOF);
   const [savedCustomerEmail, setSavedCustomerEmail] = useState("");
+  const [profileForm, setProfileForm] = useState({
+    phone: "",
+    password: "",
+    confirmPassword: ""
+  });
+  const [profileSubmitting, setProfileSubmitting] = useState(false);
+  const [proofUploadRequestId, setProofUploadRequestId] = useState("");
+  const [activeRequestWorkflowId, setActiveRequestWorkflowId] = useState("");
+  const [activeRequestSender, setActiveRequestSender] = useState<ContactDetails>(EMPTY_CONTACT_DETAILS);
+  const [activeRequestReceiver, setActiveRequestReceiver] = useState<ContactDetails>(EMPTY_CONTACT_DETAILS);
+  const [requestContactSaving, setRequestContactSaving] = useState(false);
   const [feedbackModal, setFeedbackModal] = useState<{
     open: boolean;
     loading: boolean;
@@ -465,15 +509,20 @@ export function DashboardPage({
   const visibleCustomerUpdates = customerUpdates.filter(
     (update) => update.customerEmail.toLowerCase() === savedCustomerEmail.toLowerCase() && !update.read
   );
+  const visiblePaymentRequests = [...paymentRequests].sort((left, right) => right.id.localeCompare(left.id));
+  const requiresPartnerSetup = Boolean(currentUser && (currentUser.mustChangePassword || !currentUser.phone.trim()));
   const bookingStepLabels = [
     { step: 1 as BookingStep, label: content.customerPages.stepLabels.route },
     { step: 2 as BookingStep, label: content.customerPages.stepLabels.shipment },
-    { step: 3 as BookingStep, label: content.customerPages.stepLabels.delivery },
-    { step: 4 as BookingStep, label: content.customerPages.stepLabels.contact },
-    { step: 5 as BookingStep, label: content.customerPages.stepLabels.payment }
+    { step: 3 as BookingStep, label: "Request review" }
   ];
 
-  const quoteOptions = buildQuoteOptions(bookingForm, packageEntries, quoteSort);
+  const quotePricing = buildQuotePricingContext(bookingForm, packageEntries, bookingConfig);
+  const quoteHighlights = buildQuoteHighlights(bookingForm, quotePricing);
+  const selectedPackagingOption =
+    bookingConfig.packagingOptions.find((option) => option.label === bookingForm.packagingType) ??
+    bookingConfig.packagingOptions[0] ??
+    defaultBookingConfig.packagingOptions[0];
   const routeStepComplete =
     Boolean(bookingForm.shipperType) &&
     Boolean(bookingForm.fromCountry) &&
@@ -485,36 +534,20 @@ export function DashboardPage({
     Boolean(bookingForm.packagingType) &&
     bookingForm.higherLiability !== null &&
     packageEntries.length > 0 &&
-    packageEntries.every(
-      (entry) => entry.weight.trim() && entry.length.trim() && entry.width.trim() && entry.height.trim()
-    );
-  const senderRequired = [
-    senderDetails.name,
-    senderDetails.email,
-    senderDetails.phone,
-    senderDetails.address1,
-    senderDetails.city
-  ].every((value) => value.trim());
-  const receiverRequired = [
-    receiverDetails.name,
-    receiverDetails.email,
-    receiverDetails.phone,
-    receiverDetails.address1,
-    receiverDetails.city,
-    receiverDetails.postalCode
-  ].every((value) => value.trim());
-  const contactStepComplete = senderRequired && receiverRequired;
+    packageEntries.every((entry) => entry.weight.trim());
+  const activeWorkflowRequest =
+    activeRequestWorkflowId ? visiblePaymentRequests.find((request) => request.id === activeRequestWorkflowId) ?? null : null;
   const routeProgressIndex =
     bookingForm.fromCountry &&
     bookingForm.fromCity &&
     bookingForm.toCountry &&
     bookingForm.toCity &&
-    bookingForm.fromCountry !== bookingForm.toCountry
+    bookingForm.residential !== null
       ? 3
       : bookingForm.shipperType && bookingForm.fromCountry && bookingForm.fromCity
         ? 2
-      : bookingForm.shipperType
-        ? 1
+        : bookingForm.shipperType
+          ? 1
           : 0;
   const packageProgressIndex =
     packageEntries.length > 0 && bookingForm.higherLiability !== null && bookingForm.packagingType
@@ -527,9 +560,13 @@ export function DashboardPage({
   const pageTitle =
     activeTab === "book" ? content.customerPages.bookTitle : content.customerPages.trackTitle;
   const pageCopy =
-    activeTab === "book" ? content.customerPages.bookCopy : content.customerPages.trackCopy;
+    activeTab === "book"
+      ? "Submit your shipment inquiry step by step. Swift Signate will review it, email your quote, and issue tracking after payment confirmation."
+      : content.customerPages.trackCopy;
   const pageHelper =
-    activeTab === "book" ? content.customerPages.bookHelper : content.customerPages.trackHelper;
+    activeTab === "book"
+      ? "Partner inquiries are reviewed by Swift Signate before payment details and shipment tracking are issued."
+      : content.customerPages.trackHelper;
 
   useEffect(() => {
     setActiveTab(lockedTab ?? initialTab);
@@ -540,7 +577,7 @@ export function DashboardPage({
       return;
     }
 
-    const normalizedRef = initialTrackingRef.toUpperCase();
+    const normalizedRef = normalizeTrackingNumber(initialTrackingRef);
     setTrackingInput(normalizedRef);
     setTrackingQuery(normalizedRef);
     setTrackingLookupStarted(true);
@@ -600,9 +637,13 @@ export function DashboardPage({
     }
 
     setSavedCustomerEmail(currentUser.email);
+    setProfileForm((current) => ({
+      ...current,
+      phone: current.phone || currentUser.phone
+    }));
     setSenderDetails((current) => ({
       ...current,
-      name: current.name || currentUser.name,
+      company: current.company || currentUser.name,
       email: current.email || currentUser.email,
       phone: current.phone || currentUser.phone
     }));
@@ -756,21 +797,19 @@ export function DashboardPage({
     setBookingStep(1);
     setBookingForm(INITIAL_BOOKING_FORM);
     setPackageEntries([]);
-    setSelectedQuote(null);
     setSenderDetails(
       currentUser
         ? {
             ...EMPTY_CONTACT_DETAILS,
             name: currentUser.name,
             email: currentUser.email,
-            phone: currentUser.phone
+            phone: currentUser.phone,
+            company: currentUser.name
           }
         : EMPTY_CONTACT_DETAILS
     );
     setReceiverDetails(EMPTY_CONTACT_DETAILS);
-    setPaymentMethod("");
     setTransferSubmitted(false);
-    setTransferProof(EMPTY_TRANSFER_PROOF);
   };
 
   const formatMissingFields = (fields: string[]) => {
@@ -792,10 +831,10 @@ export function DashboardPage({
       missing.push("shipper type");
     }
     if (!bookingForm.fromCountry) {
-      missing.push("pickup country");
+      missing.push("origin country");
     }
     if (!bookingForm.fromCity.trim()) {
-      missing.push("pickup city");
+      missing.push("origin city");
     }
     if (!bookingForm.toCountry) {
       missing.push("destination country");
@@ -833,15 +872,6 @@ export function DashboardPage({
       if (!entry.weight.trim()) {
         packageMissing.push("weight");
       }
-      if (!entry.length.trim()) {
-        packageMissing.push("length");
-      }
-      if (!entry.width.trim()) {
-        packageMissing.push("width");
-      }
-      if (!entry.height.trim()) {
-        packageMissing.push("height");
-      }
 
       if (packageMissing.length > 0) {
         missing.push(`package ${index + 1} ${formatMissingFields(packageMissing)}`);
@@ -852,43 +882,43 @@ export function DashboardPage({
       return "";
     }
 
-    return `Complete ${formatMissingFields(missing)} before viewing delivery options.`;
+    return `Complete ${formatMissingFields(missing)} before reviewing the shipment request.`;
   };
 
-  const getContactValidationMessage = () => {
+  const getContactValidationMessage = (sender = senderDetails, receiver = receiverDetails) => {
     const missing: string[] = [];
 
-    if (!senderDetails.name.trim()) {
+    if (!sender.name.trim()) {
       missing.push("sender name");
     }
-    if (!senderDetails.email.trim()) {
+    if (!sender.email.trim()) {
       missing.push("sender email");
     }
-    if (!senderDetails.phone.trim()) {
+    if (!sender.phone.trim()) {
       missing.push("sender phone");
     }
-    if (!senderDetails.address1.trim()) {
+    if (!sender.address1.trim()) {
       missing.push("sender address");
     }
-    if (!senderDetails.city.trim()) {
+    if (!sender.city.trim()) {
       missing.push("sender city");
     }
-    if (!receiverDetails.name.trim()) {
+    if (!receiver.name.trim()) {
       missing.push("receiver name");
     }
-    if (!receiverDetails.email.trim()) {
+    if (!receiver.email.trim()) {
       missing.push("receiver email");
     }
-    if (!receiverDetails.phone.trim()) {
+    if (!receiver.phone.trim()) {
       missing.push("receiver phone");
     }
-    if (!receiverDetails.address1.trim()) {
+    if (!receiver.address1.trim()) {
       missing.push("receiver address");
     }
-    if (!receiverDetails.city.trim()) {
+    if (!receiver.city.trim()) {
       missing.push("receiver city");
     }
-    if (!receiverDetails.postalCode.trim()) {
+    if (!receiver.postalCode.trim()) {
       missing.push("receiver postal code");
     }
 
@@ -896,43 +926,39 @@ export function DashboardPage({
       return "";
     }
 
-    return `Complete ${formatMissingFields(missing)} before continuing to payment.`;
+    return `Complete ${formatMissingFields(missing)} before reviewing the request.`;
   };
 
-  const handleTransferProofChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      setTransferProof(EMPTY_TRANSFER_PROOF);
-      return;
-    }
+  const readTransferProofFile = (file: File) =>
+    new Promise<TransferProof>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        resolve({
+          name: file.name,
+          type: file.type,
+          dataUrl: typeof reader.result === "string" ? reader.result : ""
+        });
+      };
+      reader.onerror = () => {
+        reject(new Error("Could not read the payment proof file."));
+      };
+      reader.readAsDataURL(file);
+    });
 
+  const validateTransferProof = (file: File) => {
     const maxSize = 1.5 * 1024 * 1024;
     const allowed = file.type.startsWith("image/") || file.type === "application/pdf";
     if (!allowed) {
       setNotice("Upload a payment proof as an image or PDF receipt.");
-      event.target.value = "";
-      return;
+      return false;
     }
 
     if (file.size > maxSize) {
       setNotice("Payment proof must be 1.5 MB or smaller in this local demo.");
-      event.target.value = "";
-      return;
+      return false;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setTransferProof({
-        name: file.name,
-        type: file.type,
-        dataUrl: typeof reader.result === "string" ? reader.result : ""
-      });
-      setNotice("");
-    };
-    reader.onerror = () => {
-      setNotice("Could not read the payment proof file. Try another file.");
-    };
-    reader.readAsDataURL(file);
+    return true;
   };
 
   const goToShipmentDetails = () => {
@@ -962,75 +988,68 @@ export function DashboardPage({
     setBookingStep(3);
   };
 
-  const handleContinueFromQuote = (option: QuoteOption) => {
-    setSelectedQuote(option);
-    setPaymentMethod("");
-    setTransferSubmitted(false);
-    setSenderDetails((current) => ({
-      ...current,
-      city: current.city || bookingForm.fromCity
-    }));
-    setReceiverDetails((current) => ({
-      ...current,
-      city: current.city || bookingForm.toCity
-    }));
-    setBookingStep(4);
-    setNotice("");
-  };
-
-  const handleSaveShipment = () => {
-    setNotice("Shipment details saved in this session. You can return and complete the booking anytime.");
-  };
-
   const handleTrackShipment = () => {
     if (!trackingInput.trim()) {
       setNotice("Enter a tracking number before searching.");
       return;
     }
 
+    const normalizedReference = normalizeTrackingNumber(trackingInput);
+
     setNotice("");
+    setTrackingInput(normalizedReference);
     setTrackingLookupStarted(true);
-    setTrackingQuery(trackingInput.trim().toUpperCase());
+    setTrackingQuery(normalizedReference);
   };
 
-  const handleCopyQuoteLink = async () => {
-    const summaryLink = `${window.location.origin}/dashboard/${activeTab}`;
 
-    try {
-      await navigator.clipboard.writeText(summaryLink);
-      setNotice("Quote page link copied.");
-    } catch {
-      setNotice("Could not copy the link automatically.");
-    }
-  };
+  const handleCompletePartnerProfile = () => {
+    void (async () => {
+      if (!profileForm.phone.trim() || !profileForm.password.trim()) {
+        setNotice("Add your business phone number and choose a new password to continue.");
+        return;
+      }
 
-  const handleEmailQuotes = () => {
-    const summary = quoteOptions
-      .map((option) => `${option.title}: ${formatCurrency(option.price)} - ${option.etaHeadline} ${option.etaDetail}`)
-      .join("\n");
+      if (profileForm.password.trim().length < 6) {
+        setNotice("Use a password with at least 6 characters.");
+        return;
+      }
 
-    window.location.href = `mailto:?subject=Swift%20Signate%20Delivery%20Quotes&body=${encodeURIComponent(summary)}`;
-  };
+      if (profileForm.password !== profileForm.confirmPassword) {
+        setNotice("Password confirmation does not match.");
+        return;
+      }
 
-  const handlePrintQuotes = () => {
-    window.print();
-  };
+      setProfileSubmitting(true);
 
-  const goToPaymentStep = () => {
-    if (!selectedQuote) {
-      setNotice("Select a delivery option before completing the booking details.");
-      setBookingStep(3);
-      return;
-    }
+      try {
+        const response = await fetch("/api/auth/complete-profile", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(profileForm)
+        });
+        const result = (await response.json()) as { ok: boolean; message?: string };
 
-    const validationMessage = getContactValidationMessage();
-    if (validationMessage) {
-      setNotice(validationMessage);
-      return;
-    }
+        if (!response.ok || !result.ok) {
+          setNotice(result.message ?? "Could not complete your partner profile.");
+          return;
+        }
 
-    setNotice("");
-    setBookingStep(5);
+        setNotice("Your partner profile is ready. You can now submit shipment inquiries.");
+        setProfileForm((current) => ({
+          ...current,
+          password: "",
+          confirmPassword: ""
+        }));
+        await refreshSession();
+      } catch {
+        setNotice("Could not complete your partner profile right now. Please try again.");
+      } finally {
+        setProfileSubmitting(false);
+      }
+    })();
   };
 
   const buildBookingRecordDetails = (method: "Direct transfer" | "Paystack"): BookingRecordDetails => ({
@@ -1052,51 +1071,19 @@ export function DashboardPage({
     },
     sender: { ...senderDetails },
     receiver: { ...receiverDetails },
-    quoteSort,
-    selectedQuote: selectedQuote
-      ? {
-          id: selectedQuote.id,
-          title: selectedQuote.title,
-          etaHeadline: selectedQuote.etaHeadline,
-          etaDetail: selectedQuote.etaDetail,
-          pickupNote: selectedQuote.pickupNote,
-          operator: selectedQuote.operator,
-          price: selectedQuote.price
-        }
-      : null,
+    quoteSort: "fastest",
+    selectedQuote: null,
     payment: {
       method,
       note:
         method === "Direct transfer"
-          ? `Transfer submitted for ${selectedQuote?.title ?? "selected delivery option"}`
+          ? "Shipment inquiry submitted. Waiting for the Swift Signate quote and payment details."
           : "Paystack payment confirmed"
     }
   });
 
   const handleTransferSubmission = () => {
-    if (!selectedQuote) {
-      setNotice("Select a delivery option before submitting a transfer.");
-      setBookingStep(3);
-      return;
-    }
-
-    const validationMessage = getContactValidationMessage();
-    if (validationMessage) {
-      setNotice(validationMessage);
-      setBookingStep(4);
-      return;
-    }
-
-    if (paymentMethod !== "transfer") {
-      setPaymentMethod("transfer");
-    }
-
     if (feedbackModal.loading || transferSubmitted) {
-      return;
-    }
-
-    if (!transferProof.dataUrl) {
-      setNotice("Upload a receipt or screenshot of the transfer before submitting it for verification.");
       return;
     }
 
@@ -1105,30 +1092,27 @@ export function DashboardPage({
     setFeedbackModal({
       open: true,
       loading: true,
-      title: "Submitting transfer",
-      message: "Please wait while we notify Swift Signate finance for payment verification."
+      title: "Submitting shipment request",
+      message: "Please wait while Swift Signate receives your shipment inquiry."
     });
 
-    const customerEmail = senderDetails.email.trim().toLowerCase();
-    const customerName =
-      bookingForm.shipperType === "business"
-        ? senderDetails.company.trim() || senderDetails.name.trim()
-        : senderDetails.name.trim();
+    const customerEmail = (currentUser?.email ?? senderDetails.email).trim().toLowerCase();
+    const customerName = (currentUser?.name ?? senderDetails.company ?? senderDetails.name).trim();
     const requestPayload = {
       customer: customerName,
       customerEmail,
-      customerPhone: senderDetails.phone.trim(),
+      customerPhone: (currentUser?.phone ?? senderDetails.phone).trim(),
       origin: `${bookingForm.fromCity}, ${bookingForm.fromCountry}`,
       destination: `${bookingForm.toCity}, ${bookingForm.toCountry}`,
-      eta: `${selectedQuote.etaHeadline}, ${selectedQuote.etaDetail}`,
+      eta: "Timeline will be confirmed by Swift Signate",
       packageType: `${packageEntries.length} ${bookingForm.packagingType.toLowerCase()}`,
       paymentMethod: "Direct transfer" as const,
-      serviceTitle: selectedQuote.title,
-      amount: selectedQuote.price,
-      note: `Transfer submitted for ${selectedQuote.title}`,
-      paymentProofName: transferProof.name,
-      paymentProofType: transferProof.type,
-      paymentProofDataUrl: transferProof.dataUrl,
+      serviceTitle: "Shipment inquiry",
+      amount: 0,
+      note: "Shipment inquiry submitted. Quote and payment details pending Swift Signate review.",
+      paymentProofName: "",
+      paymentProofType: "",
+      paymentProofDataUrl: "",
       details: buildBookingRecordDetails("Direct transfer")
     };
 
@@ -1141,100 +1125,131 @@ export function DashboardPage({
           setFeedbackModal({
             open: true,
             loading: false,
-            title: "Transfer submitted",
+            title: "Request received",
             message:
-              "Your transfer request has been sent for review. Swift Signate will update you with your tracking number once payment is confirmed."
+              "Your shipment request has been sent to Swift Signate. Swift Signate will review it and email your final quote and payment details shortly."
           });
-          setNotice("Transfer submitted. You will receive the tracking number after admin confirmation.");
+          setNotice("Shipment request submitted. Wait for the Swift Signate quote email, then complete contact details and payment from your request card.");
         } catch {
           setTransferSubmitted(false);
           setFeedbackModal({
             open: true,
             loading: false,
-            title: "Transfer submission failed",
-            message: "We could not submit your transfer request right now. Please try again."
+            title: "Request submission failed",
+            message: "We could not submit your shipment request right now. Please try again."
           });
-          setNotice("Transfer submission failed. Please try again.");
+          setNotice("Shipment request submission failed. Please try again.");
         }
       })();
     }, 1200);
   };
 
-  const handleConfirmPayment = () => {
-    if (!selectedQuote) {
-      setNotice("Select a delivery option before completing payment.");
-      setBookingStep(3);
+  const openRequestWorkflow = (request: typeof visiblePaymentRequests[number]) => {
+    if (activeRequestWorkflowId === request.id) {
+      setActiveRequestWorkflowId("");
       return;
     }
 
-    const validationMessage = getContactValidationMessage();
-    if (validationMessage) {
-      setNotice(validationMessage);
-      setBookingStep(4);
-      return;
-    }
+    setActiveRequestWorkflowId(request.id);
+    setActiveRequestSender({
+      ...cloneContactDetails(EMPTY_CONTACT_DETAILS),
+      company: currentUser?.name ?? "",
+      email: currentUser?.email ?? "",
+      phone: currentUser?.phone ?? "",
+      city: request.details?.route.fromCity ?? "",
+      ...(request.details?.sender ?? {})
+    });
+    setActiveRequestReceiver({
+      ...cloneContactDetails(EMPTY_CONTACT_DETAILS),
+      city: request.details?.route.toCity ?? "",
+      ...(request.details?.receiver ?? {})
+    });
+  };
 
-    if (!paymentMethod) {
-      setNotice("Choose a payment option to continue.");
-      return;
-    }
-
-    if (paymentMethod === "transfer") {
-      setNotice("Submit the transfer for verification. Tracking details will be issued after admin confirmation.");
-      return;
-    }
-
-    const customerEmail = senderDetails.email.trim().toLowerCase();
-    const customerName =
-      bookingForm.shipperType === "business"
-        ? senderDetails.company.trim() || senderDetails.name.trim()
-        : senderDetails.name.trim();
-
-    setNotice("");
-    setFeedbackModal({
-      open: true,
-      loading: true,
-      title: "Confirming payment",
-      message: "Please wait while Swift Signate confirms the Paystack payment and prepares your shipment numbers."
+  const updateWorkflowContactField = <K extends keyof ContactDetails>(
+    side: "sender" | "receiver",
+    field: K,
+    value: ContactDetails[K]
+  ) => {
+    const updater = (current: ContactDetails) => ({
+      ...current,
+      [field]: value
     });
 
-    window.setTimeout(() => {
-      void (async () => {
-        try {
-          const shipment = await bookShipment({
-            customer: customerName,
-            customerEmail,
-            customerPhone: senderDetails.phone.trim(),
-            origin: `${bookingForm.fromCity}, ${bookingForm.fromCountry}`,
-            destination: `${bookingForm.toCity}, ${bookingForm.toCountry}`,
-            eta: `${selectedQuote.etaHeadline}, ${selectedQuote.etaDetail}`,
-            packageType: `${packageEntries.length} ${bookingForm.packagingType.toLowerCase()}`,
-            paymentMethod: "Paystack",
-            details: buildBookingRecordDetails("Paystack")
-          });
+    if (side === "sender") {
+      setActiveRequestSender(updater);
+      return;
+    }
 
-          persistCustomerEmail(customerEmail);
-          setTrackingInput(shipment.ref);
-          setTrackingQuery(shipment.ref);
-          resetBookingFlow();
-          setFeedbackModal({
-            open: true,
-            loading: false,
-            title: "Payment confirmed",
-            message: `Tracking number ${shipment.ref} has been issued automatically.`
-          });
-          setNotice(`Payment confirmed. Tracking number ${shipment.ref} is ready.`);
-        } catch {
-          setFeedbackModal({
-            open: true,
-            loading: false,
-            title: "Payment confirmation failed",
-            message: "We could not confirm the Paystack payment right now. Please try again."
-          });
-          setNotice("Payment confirmation failed. Please try again.");
-        }
-      })();
-    }, 1200);
+    setActiveRequestReceiver(updater);
+  };
+
+  const handleSaveQuotedRequestContacts = () => {
+    if (!activeWorkflowRequest) {
+      return;
+    }
+
+    const validationMessage = getContactValidationMessage(activeRequestSender, activeRequestReceiver);
+    if (validationMessage) {
+      setNotice(validationMessage);
+      return;
+    }
+
+    setRequestContactSaving(true);
+    setNotice("");
+
+    void (async () => {
+      try {
+        await saveRequestCustomerDetails(activeWorkflowRequest.id, {
+          customerPhone: activeRequestSender.phone.trim(),
+          sender: activeRequestSender,
+          receiver: activeRequestReceiver
+        });
+        setNotice("Contact details saved. You can now make payment and upload proof for this request.");
+      } catch {
+        setNotice("Could not save the contact details for this shipment request right now.");
+      } finally {
+        setRequestContactSaving(false);
+      }
+    })();
+  };
+
+  const handleExistingRequestProofChange = (requestId: string, event: ChangeEvent<HTMLInputElement>) => {
+    const request = visiblePaymentRequests.find((item) => item.id === requestId);
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    if (!requestHasCompleteContacts(request?.details)) {
+      setNotice("Save the sender and receiver contact details for this request before uploading payment proof.");
+      return;
+    }
+
+    if (!validateTransferProof(file)) {
+      return;
+    }
+
+    setProofUploadRequestId(requestId);
+    setNotice("");
+
+    void (async () => {
+      try {
+        const proof = await readTransferProofFile(file);
+        await submitPaymentProof(requestId, {
+          paymentProofName: proof.name,
+          paymentProofType: proof.type,
+          paymentProofDataUrl: proof.dataUrl
+        });
+        setNotice("Payment proof submitted. Swift Signate will verify it and issue tracking after confirmation.");
+      } catch {
+        setNotice("Could not submit the payment proof right now. Please try again.");
+      } finally {
+        setProofUploadRequestId("");
+      }
+    })();
   };
 
   const closeFeedbackModal = () => {
@@ -1262,16 +1277,6 @@ export function DashboardPage({
 
     if (step === 3 && packageStepComplete) {
       setBookingStep(3);
-      return;
-    }
-
-    if (step === 4 && selectedQuote) {
-      setBookingStep(4);
-      return;
-    }
-
-    if (step === 5 && selectedQuote && contactStepComplete) {
-      setBookingStep(5);
     }
   };
 
@@ -1290,8 +1295,7 @@ export function DashboardPage({
       <AuthPanel
         role="user"
         mode={isModal ? "modal" : "page"}
-        title="Sign in to book and manage shipments"
-        copy="Create an account or sign in before using the Swift Signate customer workspace."
+        title="Partner sign in"
         nextPath="/dashboard/book"
         onSuccess={() => {
           void refreshSession();
@@ -1343,31 +1347,17 @@ export function DashboardPage({
     <div className="space-y-6">
       <AssistantLane laneRef={routeLaneRef}>
         <div className={laneCardClassName}>
-          <div className="text-base font-semibold text-neutral-950">Shipping as</div>
-          <div className="mt-4 flex flex-wrap gap-3">
-            {[
-              { id: "private", label: "Private Person" },
-              { id: "business", label: "Business" }
-            ].map((type) => {
-              return (
-                <button
-                  key={type.id}
-                  type="button"
-                  onClick={() => updateBookingField("shipperType", type.id as ShipperType)}
-                  className={laneChoiceClass(bookingForm.shipperType === type.id)}
-                >
-                  {type.label}
-                </button>
-              );
-            })}
+          <div className="text-base font-semibold text-neutral-950">Partner account</div>
+          <div className="mt-4 rounded-[20px] border border-orange-200 bg-orange-50/50 px-4 py-4 text-sm leading-6 text-neutral-700">
+            You are submitting this request as an approved business partner. Start by choosing the origin for this shipment.
           </div>
         </div>
 
         {bookingForm.shipperType && (
           <div className={laneCardClassName}>
-            <div className="text-base font-semibold text-neutral-950">Pickup location</div>
+            <div className="text-base font-semibold text-neutral-950">Origin</div>
             <div className="mt-4 flex flex-wrap gap-3">
-              {ORIGIN_SUGGESTIONS.map((country) => (
+              {pickupSuggestions.map((country) => (
                 <button
                   key={country}
                   type="button"
@@ -1383,8 +1373,8 @@ export function DashboardPage({
               onChange={(event) => updateBookingField("fromCountry", event.target.value)}
               className={`${laneInputClassName} mt-4`}
             >
-              <option value="">Select pickup country</option>
-              {COUNTRY_OPTIONS.map((country) => (
+              <option value="">Select origin country</option>
+              {countryOptions.map((country) => (
                 <option key={country} value={country}>
                   {country}
                 </option>
@@ -1393,7 +1383,7 @@ export function DashboardPage({
             {bookingForm.fromCountry && (
               <div className="mt-4 space-y-4">
                 <div className="flex flex-wrap gap-3">
-                  {(CITY_SUGGESTIONS[bookingForm.fromCountry] ?? []).map((city) => (
+                  {(bookingConfig.routeCountries.find((country) => country.name === bookingForm.fromCountry)?.cities ?? []).map((city) => (
                     <button
                       key={city}
                       type="button"
@@ -1407,7 +1397,7 @@ export function DashboardPage({
                 <input
                   value={bookingForm.fromCity}
                   onChange={(event) => updateBookingField("fromCity", event.target.value)}
-                  placeholder="Pickup city"
+                  placeholder="Origin city"
                   className={laneInputClassName}
                 />
               </div>
@@ -1419,7 +1409,7 @@ export function DashboardPage({
           <div className={laneCardClassName}>
             <div className="text-base font-semibold text-neutral-950">Destination</div>
             <div className="mt-4 flex flex-wrap gap-3">
-              {DESTINATION_SUGGESTIONS.map((country) => (
+              {destinationSuggestions.map((country) => (
                 <button
                   key={country}
                   type="button"
@@ -1436,7 +1426,7 @@ export function DashboardPage({
               className={`${laneInputClassName} mt-4`}
             >
               <option value="">Select destination country</option>
-              {COUNTRY_OPTIONS.map((country) => (
+              {countryOptions.map((country) => (
                 <option key={country} value={country}>
                   {country}
                 </option>
@@ -1445,7 +1435,7 @@ export function DashboardPage({
             {bookingForm.toCountry && (
               <div className="mt-4 space-y-4">
                 <div className="flex flex-wrap gap-3">
-                  {(CITY_SUGGESTIONS[bookingForm.toCountry] ?? []).map((city) => (
+                  {(bookingConfig.routeCountries.find((country) => country.name === bookingForm.toCountry)?.cities ?? []).map((city) => (
                     <button
                       key={city}
                       type="button"
@@ -1470,8 +1460,7 @@ export function DashboardPage({
         {bookingForm.fromCountry &&
           bookingForm.fromCity &&
           bookingForm.toCountry &&
-          bookingForm.toCity &&
-          bookingForm.fromCountry !== bookingForm.toCountry && (
+          bookingForm.toCity && (
           <div className={laneCardClassName}>
             <div className="text-base font-semibold text-neutral-950">Address type</div>
             <div className="mt-4 flex flex-wrap gap-3">
@@ -1521,9 +1510,9 @@ export function DashboardPage({
                     className="h-16 w-full bg-white px-5 text-base text-neutral-900 outline-none"
                   >
                     <option value="">Select packaging type</option>
-                    {PACKAGING_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.value}
+                    {bookingConfig.packagingOptions.map((option) => (
+                      <option key={option.id} value={option.label}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
@@ -1532,7 +1521,10 @@ export function DashboardPage({
             </label>
 
             <div className="flex h-[88px] w-[120px] items-center justify-center rounded-[20px] border border-black/10 bg-white shadow-[0_10px_20px_rgba(140,110,78,0.05)]">
-              <PackagingIllustration type={bookingForm.packagingType || "Your Packaging"} />
+              <PackagingPreview
+                icon={selectedPackagingOption?.icon ?? defaultBookingConfig.packagingOptions[0].icon}
+                label={selectedPackagingOption?.label ?? "Packaging"}
+              />
             </div>
           </div>
         </div>
@@ -1562,7 +1554,7 @@ export function DashboardPage({
           <div className={laneCardClassName}>
             <div className="text-base font-semibold text-neutral-950">How many packages?</div>
             <div className="mt-4 flex flex-wrap gap-3">
-              {PACKAGE_COUNT_SUGGESTIONS.map((count) => (
+              {bookingConfig.packageCountSuggestions.map((count) => (
                 <button
                   key={count}
                   type="button"
@@ -1623,7 +1615,7 @@ export function DashboardPage({
                       </div>
                     </label>
                     <label className="block">
-                      <span className="text-sm font-medium text-neutral-800">Dimensions</span>
+                      <span className="text-sm font-medium text-neutral-800">Dimensions (optional)</span>
                       <div className="mt-2 grid grid-cols-[1fr_auto_1fr_auto_1fr_64px] items-center overflow-hidden rounded-[16px] border border-black/14 bg-white shadow-[0_10px_20px_rgba(140,110,78,0.05)]">
                         <input
                           value={entry.length}
@@ -1686,11 +1678,344 @@ export function DashboardPage({
           onClick={goToDeliveryOptions}
           className="inline-flex min-h-[60px] items-center justify-center rounded-[12px] bg-ember px-10 text-lg font-semibold text-white shadow-[0_16px_28px_rgba(249,115,22,0.22)]"
         >
-          See Delivery Options
+          Continue to request review
         </button>
       </div>
     </div>
   );
+
+  const renderPartnerSetup = () => (
+    <motion.div
+      key="partner-setup"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -12 }}
+      transition={{ duration: 0.24 }}
+      className={isModal ? "" : "rounded-[30px] bg-white p-5 shadow-[0_18px_30px_rgba(140,110,78,0.06)] md:p-8"}
+    >
+      <div className="max-w-3xl">
+        <SectionBadge label="Partner Setup" />
+        <h2 className="mt-3 text-3xl font-semibold text-neutral-950 md:text-5xl">Complete your business profile</h2>
+        <p className="mt-3 text-base leading-7 text-neutral-600">
+          Your partner access has been approved. Add your business phone number and replace the temporary password before sending shipment inquiries.
+        </p>
+      </div>
+
+      <div className="mt-8 grid gap-4 md:max-w-2xl md:grid-cols-2">
+        <label className="md:col-span-2">
+          <span className={contactLabelClassName}>Business email</span>
+          <input value={currentUser?.email ?? ""} readOnly className={contactReadonlyFieldClassName} />
+        </label>
+        <label className="md:col-span-2">
+          <span className={contactLabelClassName}>Business name</span>
+          <input value={currentUser?.name ?? ""} readOnly className={contactReadonlyFieldClassName} />
+        </label>
+        <label className="md:col-span-2">
+          <span className={contactLabelClassName}>Business phone</span>
+          <input
+            value={profileForm.phone}
+            onChange={(event) => setProfileForm((current) => ({ ...current, phone: event.target.value }))}
+            placeholder="Business phone number"
+            className={contactFieldClassName}
+          />
+        </label>
+        <label>
+          <span className={contactLabelClassName}>New password</span>
+          <input
+            type="password"
+            value={profileForm.password}
+            onChange={(event) => setProfileForm((current) => ({ ...current, password: event.target.value }))}
+            placeholder="Choose a new password"
+            className={contactFieldClassName}
+          />
+        </label>
+        <label>
+          <span className={contactLabelClassName}>Confirm password</span>
+          <input
+            type="password"
+            value={profileForm.confirmPassword}
+            onChange={(event) => setProfileForm((current) => ({ ...current, confirmPassword: event.target.value }))}
+            placeholder="Confirm your password"
+            className={contactFieldClassName}
+          />
+        </label>
+      </div>
+
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-sm leading-6 text-neutral-600">
+          After this step, you can submit shipment inquiries and upload payment proofs from your workspace.
+        </div>
+        <button
+          type="button"
+          onClick={handleCompletePartnerProfile}
+          disabled={profileSubmitting}
+          className="inline-flex min-h-[52px] items-center justify-center rounded-[12px] bg-ember px-6 text-sm font-semibold text-white shadow-[0_16px_28px_rgba(249,115,22,0.22)] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {profileSubmitting ? "Saving profile..." : "Complete partner setup"}
+        </button>
+      </div>
+    </motion.div>
+  );
+
+  const renderQuotedRequestWorkflow = (request: typeof visiblePaymentRequests[number]) => {
+    if (activeRequestWorkflowId !== request.id || request.status !== "Quote sent") {
+      return null;
+    }
+
+    const savedContacts = requestHasCompleteContacts(request.details);
+
+    return (
+      <div className="mt-5 rounded-[24px] border border-black/8 bg-[#fcfaf7] p-5 shadow-[0_10px_18px_rgba(140,110,78,0.05)]">
+        <div className="grid gap-4 md:grid-cols-3">
+          {[
+            "Save the sender and receiver contact details for this shipment.",
+            "Make payment with the account details from the Swift Signate quote email or this request card.",
+            "Upload your proof of payment so Swift Signate can confirm it and issue tracking."
+          ].map((item, index) => (
+            <div key={item} className="rounded-[18px] border border-black/8 bg-white p-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-ember">Step 0{index + 1}</div>
+              <div className="mt-2 text-sm leading-6 text-neutral-700">{item}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-5 grid gap-6 xl:grid-cols-2">
+          <div className={`${contactCardClassName} flex h-full flex-col`}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div className="text-2xl font-semibold text-neutral-950">Sender contact</div>
+              <div className="text-sm text-neutral-500">
+                {request.details?.route.fromCity || request.origin}
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <label className="md:col-span-2">
+                <span className={contactLabelClassName}>Full name</span>
+                <input
+                  value={activeRequestSender.name}
+                  onChange={(event) => updateWorkflowContactField("sender", "name", event.target.value)}
+                  placeholder="Sender full name"
+                  className={contactFieldClassName}
+                />
+              </label>
+              <label className="md:col-span-2">
+                <span className={contactLabelClassName}>Company</span>
+                <input
+                  value={activeRequestSender.company}
+                  onChange={(event) => updateWorkflowContactField("sender", "company", event.target.value)}
+                  placeholder="Company name"
+                  className={contactFieldClassName}
+                />
+              </label>
+              <label>
+                <span className={contactLabelClassName}>Email</span>
+                <input
+                  value={activeRequestSender.email}
+                  onChange={(event) => updateWorkflowContactField("sender", "email", event.target.value)}
+                  placeholder="Sender email"
+                  className={contactFieldClassName}
+                />
+              </label>
+              <label>
+                <span className={contactLabelClassName}>Phone</span>
+                <input
+                  value={activeRequestSender.phone}
+                  onChange={(event) => updateWorkflowContactField("sender", "phone", event.target.value)}
+                  placeholder="Sender phone"
+                  className={contactFieldClassName}
+                />
+              </label>
+              <label className="md:col-span-2">
+                <span className={contactLabelClassName}>Address line 1</span>
+                <input
+                  value={activeRequestSender.address1}
+                  onChange={(event) => updateWorkflowContactField("sender", "address1", event.target.value)}
+                  placeholder="Address line 1"
+                  className={contactFieldClassName}
+                />
+              </label>
+              <label className="md:col-span-2">
+                <span className={contactLabelClassName}>Address line 2</span>
+                <input
+                  value={activeRequestSender.address2}
+                  onChange={(event) => updateWorkflowContactField("sender", "address2", event.target.value)}
+                  placeholder="Address line 2 (optional)"
+                  className={contactFieldClassName}
+                />
+              </label>
+              <label>
+                <span className={contactLabelClassName}>City</span>
+                <input
+                  value={activeRequestSender.city}
+                  onChange={(event) => updateWorkflowContactField("sender", "city", event.target.value)}
+                  placeholder="City"
+                  className={contactFieldClassName}
+                />
+              </label>
+              <label>
+                <span className={contactLabelClassName}>Postal code</span>
+                <input
+                  value={activeRequestSender.postalCode}
+                  onChange={(event) => updateWorkflowContactField("sender", "postalCode", event.target.value)}
+                  placeholder="Postal code"
+                  className={contactFieldClassName}
+                />
+              </label>
+              <label className="md:col-span-2">
+                <span className={contactLabelClassName}>Country</span>
+                <input value={request.details?.route.fromCountry ?? ""} readOnly className={contactReadonlyFieldClassName} />
+              </label>
+              <label className="md:col-span-2 flex min-h-12 items-center gap-3 rounded-[16px] border border-black/8 px-4 text-sm text-neutral-700">
+                <input
+                  type="checkbox"
+                  checked={activeRequestSender.residential}
+                  onChange={(event) => updateWorkflowContactField("sender", "residential", event.target.checked)}
+                  className="h-5 w-5 rounded border border-black/20"
+                />
+                Residential address
+              </label>
+            </div>
+          </div>
+
+          <div className={`${contactCardClassName} flex h-full flex-col`}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div className="text-2xl font-semibold text-neutral-950">Receiver contact</div>
+              <div className="text-sm text-neutral-500">
+                {request.details?.route.toCity || request.destination}
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <label className="md:col-span-2">
+                <span className={contactLabelClassName}>Full name</span>
+                <input
+                  value={activeRequestReceiver.name}
+                  onChange={(event) => updateWorkflowContactField("receiver", "name", event.target.value)}
+                  placeholder="Receiver full name"
+                  className={contactFieldClassName}
+                />
+              </label>
+              <label className="md:col-span-2">
+                <span className={contactLabelClassName}>Company</span>
+                <input
+                  value={activeRequestReceiver.company}
+                  onChange={(event) => updateWorkflowContactField("receiver", "company", event.target.value)}
+                  placeholder="Company name"
+                  className={contactFieldClassName}
+                />
+              </label>
+              <label>
+                <span className={contactLabelClassName}>Email</span>
+                <input
+                  value={activeRequestReceiver.email}
+                  onChange={(event) => updateWorkflowContactField("receiver", "email", event.target.value)}
+                  placeholder="Receiver email"
+                  className={contactFieldClassName}
+                />
+              </label>
+              <label>
+                <span className={contactLabelClassName}>Phone</span>
+                <input
+                  value={activeRequestReceiver.phone}
+                  onChange={(event) => updateWorkflowContactField("receiver", "phone", event.target.value)}
+                  placeholder="Receiver phone"
+                  className={contactFieldClassName}
+                />
+              </label>
+              <label className="md:col-span-2">
+                <span className={contactLabelClassName}>Address line 1</span>
+                <input
+                  value={activeRequestReceiver.address1}
+                  onChange={(event) => updateWorkflowContactField("receiver", "address1", event.target.value)}
+                  placeholder="Address line 1"
+                  className={contactFieldClassName}
+                />
+              </label>
+              <label className="md:col-span-2">
+                <span className={contactLabelClassName}>Address line 2</span>
+                <input
+                  value={activeRequestReceiver.address2}
+                  onChange={(event) => updateWorkflowContactField("receiver", "address2", event.target.value)}
+                  placeholder="Address line 2 (optional)"
+                  className={contactFieldClassName}
+                />
+              </label>
+              <label>
+                <span className={contactLabelClassName}>City</span>
+                <input
+                  value={activeRequestReceiver.city}
+                  onChange={(event) => updateWorkflowContactField("receiver", "city", event.target.value)}
+                  placeholder="City"
+                  className={contactFieldClassName}
+                />
+              </label>
+              <label>
+                <span className={contactLabelClassName}>Postal code</span>
+                <input
+                  value={activeRequestReceiver.postalCode}
+                  onChange={(event) => updateWorkflowContactField("receiver", "postalCode", event.target.value)}
+                  placeholder="Postal code"
+                  className={contactFieldClassName}
+                />
+              </label>
+              <label className="md:col-span-2">
+                <span className={contactLabelClassName}>Country</span>
+                <input value={request.details?.route.toCountry ?? ""} readOnly className={contactReadonlyFieldClassName} />
+              </label>
+              <label className="md:col-span-2 flex min-h-12 items-center gap-3 rounded-[16px] border border-black/8 px-4 text-sm text-neutral-700">
+                <input
+                  type="checkbox"
+                  checked={activeRequestReceiver.residential}
+                  onChange={(event) => updateWorkflowContactField("receiver", "residential", event.target.checked)}
+                  className="h-5 w-5 rounded border border-black/20"
+                />
+                Residential address
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
+          <div className="rounded-[18px] border border-black/8 bg-white p-4 text-sm leading-6 text-neutral-700">
+            <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Payment reminder</div>
+            <div className="mt-2">
+              Transfer the quoted amount to the account above. After you save the contact details, upload the payment proof here so Swift Signate can confirm it and release your invoice and tracking number.
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={handleSaveQuotedRequestContacts}
+              disabled={requestContactSaving}
+              className="inline-flex min-h-[50px] items-center justify-center rounded-[12px] border border-black/10 bg-white px-5 text-sm font-semibold text-neutral-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {requestContactSaving ? "Saving contact details..." : "Save contact details"}
+            </button>
+            <label
+              className={[
+                "inline-flex min-h-[50px] items-center justify-center rounded-[12px] px-5 text-sm font-semibold",
+                savedContacts
+                  ? "cursor-pointer border border-dashed border-orange-300 bg-orange-50/40 text-ember"
+                  : "cursor-not-allowed border border-black/8 bg-white text-neutral-400"
+              ].join(" ")}
+            >
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={(event) => handleExistingRequestProofChange(request.id, event)}
+                className="hidden"
+                disabled={!savedContacts}
+              />
+              {proofUploadRequestId === request.id
+                ? "Uploading proof..."
+                : savedContacts
+                  ? "Upload payment proof"
+                  : "Save contact details first"}
+            </label>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderBookTab = () => (
     <motion.div
@@ -1703,6 +2028,9 @@ export function DashboardPage({
     >
       {!isModal && renderBookingStepper(false, fullStepperRef)}
 
+      {requiresPartnerSetup ? (
+        renderPartnerSetup()
+      ) : (
       <AnimatePresence mode="wait">
         {bookingStep === 1 && (
           <motion.div
@@ -1739,563 +2067,61 @@ export function DashboardPage({
             transition={{ duration: 0.24 }}
             className={isModal ? "" : "rounded-[30px] bg-white p-5 shadow-[0_18px_30px_rgba(140,110,78,0.06)] md:p-8"}
           >
-            <h2 className="text-3xl font-semibold text-neutral-950 md:text-5xl">Your Delivery Options</h2>
-            <p className="mt-3 text-base leading-7 text-neutral-600">
-              Review and select a delivery service to complete the shipment booking.
-            </p>
-
-            <div className="mt-8 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-stretch">
-              <label className="rounded-[18px] border border-black/8 bg-white px-4 py-3 shadow-[0_10px_18px_rgba(140,110,78,0.06)]">
-                <span className="block text-sm text-neutral-600">Shipment Date</span>
+            <div className="mx-auto grid max-w-3xl gap-5">
+              <label className="block rounded-[22px] border border-black/8 bg-white px-5 py-4 shadow-[0_10px_18px_rgba(140,110,78,0.06)]">
+                <span className="block text-xs font-medium uppercase tracking-[0.18em] text-neutral-500">Shipping date</span>
                 <input
                   type="date"
                   value={bookingForm.shipmentDate}
                   onChange={(event) => updateBookingField("shipmentDate", event.target.value)}
-                  className="mt-1 h-12 w-full bg-transparent text-2xl font-medium text-neutral-950 outline-none"
+                  className="mt-3 h-12 w-full bg-transparent text-2xl font-medium text-neutral-950 outline-none"
                 />
               </label>
 
-              <label className="rounded-[18px] border border-black/8 bg-white px-4 py-3 shadow-[0_10px_18px_rgba(140,110,78,0.06)]">
-                <span className="block text-sm text-neutral-600">Sort by</span>
-                <select
-                  value={quoteSort}
-                  onChange={(event) => setQuoteSort(event.target.value as QuoteSort)}
-                  className="mt-1 h-12 w-full bg-transparent text-2xl font-medium text-neutral-950 outline-none"
-                >
-                  <option value="fastest">Fastest delivery</option>
-                  <option value="lowest">Lowest price</option>
-                  <option value="premium">Premium service</option>
-                </select>
-              </label>
-
-              <button
-                type="button"
-                onClick={handleSaveShipment}
-                className="rounded-[12px] border border-ember bg-white px-8 py-4 text-lg font-semibold text-ember transition-all lg:min-h-[74px] hover:shadow-[0_10px_18px_rgba(140,110,78,0.08)]"
-              >
-                Save Shipment
-              </button>
-            </div>
-
-            <div className="mt-8 space-y-6">
-              {quoteOptions.map((option) => (
-                <div
-                  key={option.id}
-                  className="rounded-[26px] border border-black/8 bg-white p-5 shadow-[0_14px_28px_rgba(140,110,78,0.06)] md:p-6"
-                >
-                  <div className="grid gap-6 lg:grid-cols-[auto_1.2fr_0.9fr] lg:items-center">
-                    <div className="flex justify-center lg:justify-start">
-                      <QuotePlane />
-                    </div>
-
-                    <div>
-                      <div className="text-sm uppercase tracking-[0.18em] text-neutral-500">Estimated delivery</div>
-                      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-neutral-950">
-                        <span className="text-3xl font-semibold">{option.etaHeadline}</span>
-                        <span className="text-2xl text-neutral-700">{option.etaDetail}</span>
-                      </div>
-                      <div className="mt-3 text-base leading-7 text-neutral-600">{option.pickupNote}</div>
-                      <div className="mt-4 text-sm font-medium text-neutral-500">{option.operator}</div>
-                    </div>
-
-                    <div className="flex flex-col justify-center lg:items-end lg:text-right">
-                      <div className="text-sm uppercase tracking-[0.18em] text-neutral-500">Includes VAT</div>
-                      <div className="mt-3 text-4xl font-semibold text-neutral-950">{formatCurrency(option.price)}</div>
-                      <button
-                        type="button"
-                        onClick={() => handleContinueFromQuote(option)}
-                        className="mt-5 inline-flex min-h-[56px] w-full items-center justify-center rounded-[12px] bg-ember px-8 text-lg font-semibold text-white shadow-[0_16px_28px_rgba(249,115,22,0.22)]"
-                      >
-                        Continue
-                      </button>
+              <div className="rounded-[24px] border border-black/8 bg-[#fcfaf7] p-5 shadow-[0_10px_18px_rgba(140,110,78,0.05)]">
+                <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Shipping summary</div>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-[18px] border border-black/8 bg-white p-4">
+                    <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Origin</div>
+                    <div className="mt-2 text-base font-semibold text-neutral-950">
+                      {bookingForm.fromCity}, {bookingForm.fromCountry}
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              <button
-                type="button"
-                onClick={handleEmailQuotes}
-                className="rounded-[12px] border border-ember bg-white px-6 py-4 text-lg font-semibold text-ember transition-all hover:shadow-[0_10px_18px_rgba(140,110,78,0.08)]"
-              >
-                Email Quotes
-              </button>
-              <button
-                type="button"
-                onClick={handleCopyQuoteLink}
-                className="rounded-[12px] border border-ember bg-white px-6 py-4 text-lg font-semibold text-ember transition-all hover:shadow-[0_10px_18px_rgba(140,110,78,0.08)]"
-              >
-                Copy link
-              </button>
-              <button
-                type="button"
-                onClick={handlePrintQuotes}
-                className="rounded-[12px] border border-ember bg-white px-6 py-4 text-lg font-semibold text-ember transition-all hover:shadow-[0_10px_18px_rgba(140,110,78,0.08)]"
-              >
-                Print Quotes
-              </button>
-            </div>
-          </motion.div>
-        )}
-
-        {bookingStep === 4 && selectedQuote && (
-          <motion.div
-            key="step-4"
-            initial={{ opacity: 0, x: 16 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -16 }}
-            transition={{ duration: 0.24 }}
-            className={isModal ? "" : "rounded-[30px] border border-black/8 bg-white p-5 shadow-[0_18px_30px_rgba(140,110,78,0.06)] md:p-8"}
-          >
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
-              <div className="max-w-2xl">
-                <h2 className="text-3xl font-semibold text-neutral-950 md:text-5xl">Contact details</h2>
-                <p className="mt-3 text-base leading-7 text-neutral-600">
-                  Enter the sender and receiver details for pickup and delivery before you move to payment.
-                </p>
-              </div>
-
-              <div className="rounded-[22px] border border-black/8 bg-white p-4 shadow-[0_10px_18px_rgba(140,110,78,0.06)] xl:w-full">
-                <div className="text-sm uppercase tracking-[0.18em] text-neutral-500">Selected service</div>
-                <div className="mt-2 text-xl font-semibold text-neutral-950">{selectedQuote.title}</div>
-                <div className="mt-2 text-sm text-neutral-600">
-                  {selectedQuote.etaHeadline} · {selectedQuote.etaDetail}
-                </div>
-                <div className="mt-3 text-2xl font-semibold text-ember">{formatCurrency(selectedQuote.price)}</div>
-              </div>
-            </div>
-
-            <div className="mt-8 grid gap-6 xl:grid-cols-2 xl:items-stretch">
-              <div className={`${contactCardClassName} flex h-full flex-col`}>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                  <div className="text-2xl font-semibold text-neutral-950">From</div>
-                  <div className="text-sm text-neutral-500">
-                    {bookingForm.fromCity}, {bookingForm.fromCountry}
+                  <div className="rounded-[18px] border border-black/8 bg-white p-4">
+                    <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Destination</div>
+                    <div className="mt-2 text-base font-semibold text-neutral-950">
+                      {bookingForm.toCity}, {bookingForm.toCountry}
+                    </div>
+                  </div>
+                  <div className="rounded-[18px] border border-black/8 bg-white p-4">
+                    <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Packaging</div>
+                    <div className="mt-2 text-base font-semibold text-neutral-950">{bookingForm.packagingType}</div>
+                  </div>
+                  <div className="rounded-[18px] border border-black/8 bg-white p-4">
+                    <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Chargeable weight</div>
+                    <div className="mt-2 text-base font-semibold text-neutral-950">{formatWeight(quotePricing.chargeableWeight)}</div>
                   </div>
                 </div>
-                <div className="mt-5 grid gap-4 md:grid-cols-2">
-                  <label className="md:col-span-2">
-                    <span className={contactLabelClassName}>Full name</span>
-                    <input
-                      value={senderDetails.name}
-                      onChange={(event) => updateContactField("sender", "name", event.target.value)}
-                      placeholder="Full name"
-                      className={contactFieldClassName}
-                    />
-                  </label>
-                  <label className="md:col-span-2">
-                    <span className={contactLabelClassName}>Company</span>
-                    <input
-                      value={senderDetails.company}
-                      onChange={(event) => updateContactField("sender", "company", event.target.value)}
-                      placeholder="Company name (optional)"
-                      className={contactFieldClassName}
-                    />
-                  </label>
-                  <label>
-                    <span className={contactLabelClassName}>Email</span>
-                    <input
-                      value={senderDetails.email}
-                      onChange={(event) => updateContactField("sender", "email", event.target.value)}
-                      placeholder="Email address"
-                      className={contactFieldClassName}
-                    />
-                  </label>
-                  <label>
-                    <span className={contactLabelClassName}>Phone</span>
-                    <input
-                      value={senderDetails.phone}
-                      onChange={(event) => updateContactField("sender", "phone", event.target.value)}
-                      placeholder="Phone number"
-                      className={contactFieldClassName}
-                    />
-                  </label>
-                  <label className="md:col-span-2">
-                    <span className={contactLabelClassName}>Address line 1</span>
-                    <input
-                      value={senderDetails.address1}
-                      onChange={(event) => updateContactField("sender", "address1", event.target.value)}
-                      placeholder="Address line 1"
-                      className={contactFieldClassName}
-                    />
-                  </label>
-                  <label className="md:col-span-2">
-                    <span className={contactLabelClassName}>Address line 2</span>
-                    <input
-                      value={senderDetails.address2}
-                      onChange={(event) => updateContactField("sender", "address2", event.target.value)}
-                      placeholder="Address line 2 (optional)"
-                      className={contactFieldClassName}
-                    />
-                  </label>
-                  <label>
-                    <span className={contactLabelClassName}>City</span>
-                    <input
-                      value={senderDetails.city}
-                      onChange={(event) => updateContactField("sender", "city", event.target.value)}
-                      placeholder="City"
-                      className={contactFieldClassName}
-                    />
-                  </label>
-                  <label>
-                    <span className={contactLabelClassName}>Postal code</span>
-                    <input
-                      value={senderDetails.postalCode}
-                      onChange={(event) => updateContactField("sender", "postalCode", event.target.value)}
-                      placeholder="Postal code"
-                      className={contactFieldClassName}
-                    />
-                  </label>
-                  <label className="md:col-span-2">
-                    <span className={contactLabelClassName}>Country</span>
-                    <input
-                      value={bookingForm.fromCountry}
-                      readOnly
-                      className={contactReadonlyFieldClassName}
-                    />
-                  </label>
-                  <label className="md:col-span-2 flex min-h-12 items-center gap-3 rounded-[16px] border border-black/8 px-4 text-sm text-neutral-700">
-                    <input
-                      type="checkbox"
-                      checked={senderDetails.residential}
-                      onChange={(event) => updateContactField("sender", "residential", event.target.checked)}
-                      className="h-5 w-5 rounded border border-black/20"
-                    />
-                    Residential address
-                  </label>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {quoteHighlights.map((item) => (
+                    <PricingPill key={`summary-${item}`} label={item} />
+                  ))}
                 </div>
               </div>
 
-              <div className={`${contactCardClassName} flex h-full flex-col`}>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                  <div className="text-2xl font-semibold text-neutral-950">To</div>
-                  <div className="text-sm text-neutral-500">
-                    {bookingForm.toCity}, {bookingForm.toCountry}
-                  </div>
-                </div>
-                <div className="mt-5 grid gap-4 md:grid-cols-2">
-                  <label className="md:col-span-2">
-                    <span className={contactLabelClassName}>Full name</span>
-                    <input
-                      value={receiverDetails.name}
-                      onChange={(event) => updateContactField("receiver", "name", event.target.value)}
-                      placeholder="Full name"
-                      className={contactFieldClassName}
-                    />
-                  </label>
-                  <label className="md:col-span-2">
-                    <span className={contactLabelClassName}>Company</span>
-                    <input
-                      value={receiverDetails.company}
-                      onChange={(event) => updateContactField("receiver", "company", event.target.value)}
-                      placeholder="Company name (optional)"
-                      className={contactFieldClassName}
-                    />
-                  </label>
-                  <label>
-                    <span className={contactLabelClassName}>Email</span>
-                    <input
-                      value={receiverDetails.email}
-                      onChange={(event) => updateContactField("receiver", "email", event.target.value)}
-                      placeholder="Email address"
-                      className={contactFieldClassName}
-                    />
-                  </label>
-                  <label>
-                    <span className={contactLabelClassName}>Phone</span>
-                    <input
-                      value={receiverDetails.phone}
-                      onChange={(event) => updateContactField("receiver", "phone", event.target.value)}
-                      placeholder="Phone number"
-                      className={contactFieldClassName}
-                    />
-                  </label>
-                  <label className="md:col-span-2">
-                    <span className={contactLabelClassName}>Address line 1</span>
-                    <input
-                      value={receiverDetails.address1}
-                      onChange={(event) => updateContactField("receiver", "address1", event.target.value)}
-                      placeholder="Address line 1"
-                      className={contactFieldClassName}
-                    />
-                  </label>
-                  <label className="md:col-span-2">
-                    <span className={contactLabelClassName}>Address line 2</span>
-                    <input
-                      value={receiverDetails.address2}
-                      onChange={(event) => updateContactField("receiver", "address2", event.target.value)}
-                      placeholder="Address line 2 (optional)"
-                      className={contactFieldClassName}
-                    />
-                  </label>
-                  <label>
-                    <span className={contactLabelClassName}>City</span>
-                    <input
-                      value={receiverDetails.city}
-                      onChange={(event) => updateContactField("receiver", "city", event.target.value)}
-                      placeholder="City"
-                      className={contactFieldClassName}
-                    />
-                  </label>
-                  <label>
-                    <span className={contactLabelClassName}>Postal code</span>
-                    <input
-                      value={receiverDetails.postalCode}
-                      onChange={(event) => updateContactField("receiver", "postalCode", event.target.value)}
-                      placeholder="Postal code"
-                      className={contactFieldClassName}
-                    />
-                  </label>
-                  <label className="md:col-span-2">
-                    <span className={contactLabelClassName}>Country</span>
-                    <input
-                      value={bookingForm.toCountry}
-                      readOnly
-                      className={contactReadonlyFieldClassName}
-                    />
-                  </label>
-                  <label className="md:col-span-2 flex min-h-12 items-center gap-3 rounded-[16px] border border-black/8 px-4 text-sm text-neutral-700">
-                    <input
-                      type="checkbox"
-                      checked={receiverDetails.residential}
-                      onChange={(event) => updateContactField("receiver", "residential", event.target.checked)}
-                      className="h-5 w-5 rounded border border-black/20"
-                    />
-                    Residential address
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <button
                 type="button"
-                onClick={() => setBookingStep(3)}
-                className="rounded-[12px] border border-black/10 bg-white px-6 py-4 text-base font-medium text-neutral-700 transition-colors hover:border-orange-200 hover:text-neutral-950"
+                onClick={handleTransferSubmission}
+                disabled={feedbackModal.loading || transferSubmitted}
+                className="inline-flex min-h-[54px] items-center justify-center rounded-[12px] bg-ember px-6 text-base font-semibold text-white shadow-[0_16px_28px_rgba(249,115,22,0.22)] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Back to delivery options
+                {feedbackModal.loading ? "Submitting request..." : "Request shipping"}
               </button>
-              <button
-                type="button"
-                onClick={goToPaymentStep}
-                className="inline-flex min-h-[56px] items-center justify-center rounded-[12px] bg-ember px-8 text-lg font-semibold text-white shadow-[0_16px_28px_rgba(249,115,22,0.22)]"
-              >
-                Continue to payment
-              </button>
-            </div>
-          </motion.div>
-        )}
-
-        {bookingStep === 5 && selectedQuote && (
-          <motion.div
-            key="step-5"
-            initial={{ opacity: 0, x: 16 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -16 }}
-            transition={{ duration: 0.24 }}
-            className={isModal ? "" : "rounded-[30px] border border-black/8 bg-white p-5 shadow-[0_18px_30px_rgba(140,110,78,0.06)] md:p-8"}
-          >
-            <div className="grid gap-6 xl:grid-cols-[1.12fr_0.88fr]">
-              <div className="space-y-5">
-                <div>
-                  <h2 className="text-3xl font-semibold text-neutral-950 md:text-5xl">
-                    {content.customerPages.paymentTitle}
-                  </h2>
-                  <p className="mt-3 text-base leading-7 text-neutral-600">
-                    {content.customerPages.paymentCopy}
-                  </p>
-                </div>
-
-                <div
-                  className={[
-                    "rounded-[24px] border p-5 shadow-[0_10px_18px_rgba(140,110,78,0.05)] transition-colors",
-                    paymentMethod === "transfer" ? "border-orange-300 bg-orange-50/40" : "border-black/8 bg-white"
-                  ].join(" ")}
-                >
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <div className="text-lg font-semibold text-neutral-950">{content.customerPages.transferTitle}</div>
-                      <div className="mt-2 text-sm leading-6 text-neutral-600">
-                        {content.customerPages.transferCopy}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod("transfer")}
-                      className={[
-                        "rounded-full border px-4 py-2 text-sm font-medium transition-colors",
-                        paymentMethod === "transfer"
-                          ? "border-orange-300 bg-white text-ember"
-                          : "border-black/8 bg-white text-neutral-700 hover:border-orange-200"
-                      ].join(" ")}
-                    >
-                      {paymentMethod === "transfer" ? "Selected" : "Use transfer"}
-                    </button>
-                  </div>
-
-                  {paymentMethod === "transfer" && (
-                    <>
-                      <div className="mt-5 grid gap-4 rounded-[20px] border border-black/8 bg-white p-4 sm:grid-cols-3">
-                        <div>
-                          <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Bank</div>
-                          <div className="mt-2 text-base font-semibold text-neutral-950">Sterling Bank</div>
-                        </div>
-                        <div>
-                          <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Account number</div>
-                          <div className="mt-2 text-base font-semibold text-neutral-950">0021489031</div>
-                        </div>
-                        <div>
-                          <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Account name</div>
-                          <div className="mt-2 text-base font-semibold text-neutral-950">Swift Signate Logistics</div>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 rounded-[20px] border border-black/8 bg-white p-4">
-                        <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Transfer proof</div>
-                        <div className="mt-2 text-sm leading-6 text-neutral-600">
-                          Upload a receipt, bank transfer slip, or payment screenshot before submitting the transfer.
-                        </div>
-                        <label className="mt-4 flex min-h-[54px] cursor-pointer items-center justify-center rounded-[14px] border border-dashed border-orange-300 bg-orange-50/40 px-4 text-sm font-medium text-ember">
-                          <input
-                            type="file"
-                            accept="image/*,application/pdf"
-                            onChange={handleTransferProofChange}
-                            className="hidden"
-                          />
-                          {transferProof.name ? "Replace payment proof" : "Upload payment proof"}
-                        </label>
-                        {transferProof.name && (
-                          <div className="mt-3 rounded-[16px] border border-black/8 bg-[#fcfaf7] px-4 py-3 text-sm text-neutral-700">
-                            Attached: <span className="font-medium text-neutral-950">{transferProof.name}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="text-sm text-neutral-600">
-                          {transferSubmitted
-                            ? "Transfer request sent. Swift Signate will update you after verification."
-                            : "After making the transfer, submit it for verification so the booking can wait for admin approval."}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleTransferSubmission}
-                          disabled={feedbackModal.loading || transferSubmitted}
-                          className="inline-flex min-h-[48px] items-center justify-center rounded-[12px] border border-ember bg-white px-5 text-sm font-semibold text-ember"
-                        >
-                          {transferSubmitted ? "Awaiting verification" : "Submit transfer for verification"}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <div
-                  className={[
-                    "rounded-[24px] border p-5 shadow-[0_10px_18px_rgba(140,110,78,0.05)] transition-colors",
-                    paymentMethod === "paystack" ? "border-orange-300 bg-orange-50/40" : "border-black/8 bg-white"
-                  ].join(" ")}
-                >
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <div className="text-lg font-semibold text-neutral-950">{content.customerPages.paystackTitle}</div>
-                      <div className="mt-2 text-sm leading-6 text-neutral-600">
-                        {content.customerPages.paystackCopy}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPaymentMethod("paystack");
-                        setTransferSubmitted(false);
-                      }}
-                      className={[
-                        "rounded-full border px-4 py-2 text-sm font-medium transition-colors",
-                        paymentMethod === "paystack"
-                          ? "border-orange-300 bg-white text-ember"
-                          : "border-black/8 bg-white text-neutral-700 hover:border-orange-200"
-                      ].join(" ")}
-                    >
-                      {paymentMethod === "paystack" ? "Selected" : "Use Paystack"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <aside className="rounded-[24px] border border-black/8 bg-white p-5 shadow-[0_10px_18px_rgba(140,110,78,0.05)]">
-                <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Booking summary</div>
-                <div className="mt-3 text-2xl font-semibold text-neutral-950">{selectedQuote.title}</div>
-                <div className="mt-2 text-sm text-neutral-600">
-                  {selectedQuote.etaHeadline} - {selectedQuote.etaDetail}
-                </div>
-                <div className="mt-4 text-4xl font-semibold text-ember">{formatCurrency(selectedQuote.price)}</div>
-
-                <div className="mt-6 space-y-3 rounded-[20px] border border-black/8 bg-[#fcfaf7] p-4 text-sm text-neutral-700">
-                  <div className="flex items-center justify-between gap-4">
-                    <span>Route</span>
-                    <span className="text-right font-medium text-neutral-950">
-                      {bookingForm.fromCity}, {bookingForm.fromCountry} to {bookingForm.toCity}, {bookingForm.toCountry}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span>Packages</span>
-                    <span className="font-medium text-neutral-950">{packageEntries.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span>Payment option</span>
-                    <span className="font-medium text-neutral-950">
-                      {paymentMethod === "transfer"
-                        ? "Direct transfer"
-                        : paymentMethod === "paystack"
-                          ? "Paystack"
-                          : "Not selected"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mt-6 flex flex-col gap-3">
-                  {paymentMethod === "paystack" ? (
-                    <button
-                      type="button"
-                      onClick={handleConfirmPayment}
-                      disabled={feedbackModal.loading}
-                      className="inline-flex min-h-[54px] items-center justify-center rounded-[12px] bg-ember px-6 text-base font-semibold text-white shadow-[0_16px_28px_rgba(249,115,22,0.22)] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Confirm Paystack payment
-                    </button>
-                  ) : paymentMethod === "transfer" && transferSubmitted ? (
-                    <div className="rounded-[18px] border border-orange-200 bg-orange-50 px-4 py-4 text-sm leading-6 text-neutral-700">
-                      Transfer sent. Your tracking number will appear here after the admin confirms payment.
-                    </div>
-                  ) : paymentMethod === "transfer" ? (
-                    <button
-                      type="button"
-                      onClick={handleTransferSubmission}
-                      disabled={feedbackModal.loading}
-                      className="inline-flex min-h-[54px] items-center justify-center rounded-[12px] bg-ember px-6 text-base font-semibold text-white shadow-[0_16px_28px_rgba(249,115,22,0.22)] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Submit transfer for verification
-                    </button>
-                  ) : (
-                    <div className="rounded-[18px] border border-black/8 bg-white px-4 py-4 text-sm leading-6 text-neutral-600">
-                      Choose a payment option to continue.
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setBookingStep(4)}
-                    className="rounded-[12px] border border-black/10 bg-white px-6 py-4 text-sm font-medium text-neutral-700"
-                  >
-                    Back to contact details
-                  </button>
-                </div>
-              </aside>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+      )}
     </motion.div>
   );
 
@@ -2318,7 +2144,7 @@ export function DashboardPage({
         <div className="mt-6 flex flex-col gap-3">
           <input
             value={trackingInput}
-            onChange={(event) => setTrackingInput(event.target.value.toUpperCase())}
+            onChange={(event) => setTrackingInput(normalizeTrackingNumber(event.target.value))}
             placeholder="Enter tracking number"
             className="h-12 w-full rounded-full border border-black/8 bg-white px-5 text-sm text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-orange-300"
           />
@@ -2366,6 +2192,14 @@ export function DashboardPage({
                 <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Estimated delivery</div>
                 <div className="mt-2 text-sm font-medium text-neutral-900">{trackingResult.eta}</div>
               </div>
+              <div className="rounded-[20px] border border-black/8 bg-white p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
+                <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Clearance fee</div>
+                <div className="mt-2 text-sm font-medium text-neutral-900">
+                  {typeof trackingResult.clearanceFee === "number"
+                    ? new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(trackingResult.clearanceFee)
+                    : "Will be updated by Swift Signate"}
+                </div>
+              </div>
             </div>
 
             <div className="mt-4 rounded-[20px] border border-black/8 bg-white p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
@@ -2408,16 +2242,16 @@ export function DashboardPage({
         {isModal ? (
           <div
             className={[
-              "flex items-center gap-4 px-5 pb-0 pt-5 md:px-8 md:pt-6",
-              activeTab === "book" ? "justify-between" : "justify-end"
+              "flex flex-col gap-4 px-5 pb-0 pt-5 md:px-8 md:pt-6",
+              activeTab === "book" ? "sm:flex-row sm:items-center sm:justify-between" : "sm:flex-row sm:items-center sm:justify-end"
             ].join(" ")}
           >
             {activeTab === "book" && (
-              <div className="min-w-0 flex-1">
+              <div className="order-2 min-w-0 w-full sm:order-1 sm:flex-1">
                 {renderBookingStepper(true, compactStepperRef)}
               </div>
             )}
-            <div className="flex items-center gap-2">
+            <div className="order-1 flex w-full flex-wrap items-center justify-end gap-2 sm:order-2 sm:w-auto">
               {isUserAuthenticated && (
                 <>
                   <div className="hidden rounded-full border border-black/8 bg-white px-4 py-2 text-xs uppercase tracking-[0.16em] text-neutral-600 md:inline-flex">
@@ -2627,6 +2461,117 @@ export function DashboardPage({
           </section>
         )}
 
+        {!isModal && isUserAuthenticated && (
+          <section className="mt-6 rounded-[28px] border border-black/8 bg-white p-5 shadow-[0_16px_34px_rgba(140,110,78,0.06)] md:p-8">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <SectionBadge label="Shipment Requests" />
+                <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Your inquiry and payment progress</h2>
+              </div>
+              <div className="text-sm text-neutral-500">Quotes, contact details, payment proof, invoices, and tracking all appear here.</div>
+            </div>
+
+            <div className="mt-6 grid gap-4">
+              {visiblePaymentRequests.length === 0 ? (
+                <div className="rounded-[24px] border border-black/8 bg-[#fcfaf7] p-5 text-sm leading-7 text-neutral-600">
+                  No shipment requests yet. Submit a new inquiry above and Swift Signate will review it.
+                </div>
+              ) : (
+                visiblePaymentRequests.map((request) => (
+                  <div key={request.id} className="rounded-[24px] border border-black/8 bg-white p-5 shadow-[0_10px_18px_rgba(140,110,78,0.05)]">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">{request.id}</div>
+                        <div className="mt-2 text-xl font-semibold text-neutral-950">{request.serviceTitle || "Shipment inquiry"}</div>
+                        <div className="mt-2 text-sm text-neutral-600">
+                          {request.origin} {"->"} {request.destination}
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-start gap-3 sm:items-end">
+                        <span
+                          className={[
+                            "rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em]",
+                            requestStatusClasses(request.status)
+                          ].join(" ")}
+                        >
+                          {request.status}
+                        </span>
+                        <div className="text-lg font-semibold text-neutral-950">
+                          {request.status === "Inquiry received" || (request.amount <= 0 && request.status !== "Approved")
+                            ? "Quote pending"
+                            : formatCurrency(request.amount)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
+                      <div className="rounded-[18px] bg-[#fcfaf7] p-4 text-sm leading-6 text-neutral-700">
+                        <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Admin note</div>
+                        <div className="mt-2">{request.note || "Waiting for Swift Signate to review your inquiry."}</div>
+                      </div>
+
+                      <div className="rounded-[18px] bg-[#fcfaf7] p-4 text-sm leading-6 text-neutral-700">
+                        <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Payment details</div>
+                        <div className="mt-2">{request.bankName || "Bank will appear after Swift Signate sends your quote."}</div>
+                        <div>{request.accountNumber || "Account number will appear here."}</div>
+                        <div>{request.accountName || "Account name will appear here."}</div>
+                        {request.invoiceNumber && (
+                          <div className="mt-3 rounded-[14px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-700">
+                            Invoice: {request.invoiceNumber}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col gap-3">
+                        {request.status === "Quote sent" ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openRequestWorkflow(request)}
+                              className="inline-flex min-h-[48px] items-center justify-center rounded-[12px] border border-orange-200 bg-orange-50/40 px-4 text-sm font-semibold text-ember"
+                            >
+                              {activeRequestWorkflowId === request.id ? "Hide next steps" : "Continue with contact and payment"}
+                            </button>
+                            <div className="rounded-[14px] border border-black/8 bg-white px-4 py-3 text-sm text-neutral-600">
+                              {requestHasCompleteContacts(request.details)
+                                ? "Contact details saved. You can upload payment proof below."
+                                : "Save contact details before uploading proof."}
+                            </div>
+                          </>
+                        ) : request.status === "Approved" && request.shipmentRef ? (
+                          <Link
+                            href={`/dashboard/track?ref=${encodeURIComponent(request.shipmentRef)}`}
+                            className="inline-flex min-h-[48px] items-center justify-center rounded-[12px] bg-ember px-4 text-sm font-semibold text-white"
+                          >
+                            Open tracking
+                          </Link>
+                        ) : (
+                          <div className="rounded-[14px] border border-black/8 bg-white px-4 py-3 text-sm text-neutral-600">
+                            {request.status === "Inquiry received"
+                              ? "Waiting for Swift Signate quote"
+                              : request.status === "Payment submitted" || request.status === "Awaiting verification"
+                                ? "Payment proof submitted"
+                                : request.status === "Rejected"
+                                  ? "Check the Swift Signate note above"
+                                  : "Awaiting next update"}
+                          </div>
+                        )}
+
+                        {request.paymentProofName && (
+                          <div className="rounded-[14px] border border-black/8 bg-[#fcfaf7] px-4 py-3 text-sm text-neutral-700">
+                            Proof: <span className="font-medium text-neutral-950">{request.paymentProofName}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {renderQuotedRequestWorkflow(request)}
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        )}
+
         <AnimatePresence>
           {feedbackModal.open && (
             <motion.div
@@ -2644,7 +2589,7 @@ export function DashboardPage({
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-ember">Payment update</div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-ember">Request update</div>
                     <h3 className="mt-3 text-2xl font-semibold text-neutral-950">{feedbackModal.title}</h3>
                   </div>
                   {!feedbackModal.loading && (

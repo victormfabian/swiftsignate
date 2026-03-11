@@ -13,6 +13,8 @@ export type UserSession = {
     name: string;
     email: string;
     phone: string;
+    status: "pending" | "approved";
+    mustChangePassword: boolean;
     createdAt: string;
   };
 };
@@ -50,6 +52,8 @@ export async function getAuthSession(): Promise<AuthSession> {
         name: session.user.name,
         email: session.user.email,
         phone: session.user.phone,
+        status: session.user.status,
+        mustChangePassword: Boolean(session.user.must_change_password),
         createdAt: session.user.created_at
       }
     };

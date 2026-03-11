@@ -1,16 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogoMark } from "@/components/logo-mark";
-import { useSiteContentStore } from "@/components/site-content-store";
+import { PasswordField } from "@/components/password-field";
 
 type AuthPanelProps = {
   role: "user" | "admin";
   mode?: "page" | "modal";
   title?: string;
-  copy?: string;
   nextPath?: string;
+  initialNotice?: string;
   onSuccess?: () => void;
   onClose?: () => void;
 };
@@ -23,22 +23,18 @@ function isValidEmail(value: string) {
   return /\S+@\S+\.\S+/.test(value.trim());
 }
 
-export function AuthPanel({ role, mode = "page", title, copy, nextPath, onSuccess, onClose }: AuthPanelProps) {
+export function AuthPanel({ role, mode = "page", title, nextPath, initialNotice = "", onSuccess, onClose }: AuthPanelProps) {
   const router = useRouter();
-  const { content } = useSiteContentStore();
   const [userMode, setUserMode] = useState<"signin" | "signup">("signin");
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(initialNotice);
   const [submitting, setSubmitting] = useState(false);
   const [signInForm, setSignInForm] = useState({
     email: "",
     password: ""
   });
   const [signUpForm, setSignUpForm] = useState({
-    name: "",
+    businessName: "",
     email: "",
-    phone: "",
-    password: "",
-    confirmPassword: ""
   });
   const [adminForm, setAdminForm] = useState({
     email: "",
@@ -50,18 +46,20 @@ export function AuthPanel({ role, mode = "page", title, copy, nextPath, onSucces
       return title;
     }
 
-    return role === "admin" ? "Admin sign in" : "Sign in to continue";
-  }, [role, title]);
-
-  const description = useMemo(() => {
-    if (copy) {
-      return copy;
+    if (role === "admin") {
+      return "Sign in";
     }
 
-    return role === "admin"
-      ? "Only authorized Swift Signate administrators can access the operations portal."
-      : "Create an account or sign in to book shipments, track updates, and access your dashboard.";
-  }, [copy, role]);
+    return userMode === "signup" ? "Partner sign up" : "Partner sign in";
+  }, [role, title, userMode]);
+
+  const safeNextPath = useMemo(() => {
+    if (!nextPath) {
+      return "/dashboard/book";
+    }
+
+    return nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/dashboard/book";
+  }, [nextPath]);
 
   const handleUserSignIn = () => {
     void (async () => {
@@ -94,7 +92,7 @@ export function AuthPanel({ role, mode = "page", title, copy, nextPath, onSucces
           return;
         }
 
-        router.push(nextPath ?? "/dashboard/book");
+        router.push(safeNextPath);
         router.refresh();
       } catch {
         setNotice("Sign in failed. Check the deployment and database connection, then try again.");
@@ -106,18 +104,8 @@ export function AuthPanel({ role, mode = "page", title, copy, nextPath, onSucces
 
   const handleUserSignUp = () => {
     void (async () => {
-      if (!signUpForm.name.trim() || !signUpForm.phone.trim() || !isValidEmail(signUpForm.email)) {
-        setNotice("Name, email, and phone number are required to create an account.");
-        return;
-      }
-
-      if (signUpForm.password.trim().length < 6) {
-        setNotice("Use a password with at least 6 characters.");
-        return;
-      }
-
-      if (signUpForm.password !== signUpForm.confirmPassword) {
-        setNotice("Password confirmation does not match.");
+      if (!signUpForm.businessName.trim() || !isValidEmail(signUpForm.email)) {
+        setNotice("Business name and email are required to request partner access.");
         return;
       }
 
@@ -130,30 +118,25 @@ export function AuthPanel({ role, mode = "page", title, copy, nextPath, onSucces
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            name: signUpForm.name,
-            email: signUpForm.email,
-            phone: signUpForm.phone,
-            password: signUpForm.password
+            businessName: signUpForm.businessName,
+            email: signUpForm.email
           })
         });
         const result = (await response.json()) as { ok: boolean; message?: string };
 
         if (!response.ok || !result.ok) {
-          setNotice(result.message ?? "Could not create the account.");
+          setNotice(result.message ?? "Could not request partner access.");
           return;
         }
 
-        setNotice("");
-        if (onSuccess) {
-          onSuccess();
-          router.refresh();
-          return;
-        }
-
-        router.push(nextPath ?? "/dashboard/book");
-        router.refresh();
+        setUserMode("signin");
+        setSignUpForm({
+          businessName: "",
+          email: ""
+        });
+        setNotice(result.message ?? "Partner registration received. Watch your email for approval.");
       } catch {
-        setNotice("Account creation failed. Check the deployment and database connection, then try again.");
+        setNotice("Partner registration failed. Check the deployment and database connection, then try again.");
       } finally {
         setSubmitting(false);
       }
@@ -205,14 +188,7 @@ export function AuthPanel({ role, mode = "page", title, copy, nextPath, onSucces
     <div className={mode === "modal" ? "bg-white p-4 md:p-6" : "min-h-screen bg-[#faf8f5] px-4 py-6 md:px-6 md:py-10"}>
       <div className={mode === "modal" ? "mx-auto w-full max-w-[520px]" : "mx-auto w-full max-w-[560px]"}>
         <div className="rounded-[28px] bg-white p-5 shadow-[0_20px_46px_rgba(140,110,78,0.08)] md:p-7">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <LogoMark mediaSrc={content.navigation.logoMedia} />
-              <div>
-                <div className="text-sm font-semibold text-neutral-950">Swift Signate</div>
-                <div className="text-xs text-neutral-500">{role === "admin" ? "Secure admin access" : "Account access"}</div>
-              </div>
-            </div>
+          <div className="flex items-center justify-end gap-4">
             {onClose && (
               <button
                 type="button"
@@ -227,7 +203,6 @@ export function AuthPanel({ role, mode = "page", title, copy, nextPath, onSucces
           <div className="mt-6">
             <div className="max-w-md">
               <h1 className="text-2xl font-semibold tracking-[-0.03em] text-neutral-950 md:text-[2rem]">{heading}</h1>
-              <p className="mt-2 text-sm leading-6 text-neutral-600">{description}</p>
             </div>
 
             <div className="mt-6 rounded-[24px] bg-[#fcfaf7] p-5">
@@ -267,21 +242,27 @@ export function AuthPanel({ role, mode = "page", title, copy, nextPath, onSucces
                           value={signInForm.email}
                           onChange={(event) => setSignInForm((current) => ({ ...current, email: event.target.value }))}
                           placeholder="Email address"
+                          autoComplete="email"
                           className={inputClassName}
                         />
                       </label>
-                      <label>
-                        <span className={labelClassName}>Password</span>
-                        <input
-                          type="password"
-                          value={signInForm.password}
-                          onChange={(event) =>
-                            setSignInForm((current) => ({ ...current, password: event.target.value }))
-                          }
-                          placeholder="Password"
-                          className={inputClassName}
-                        />
-                      </label>
+                      <PasswordField
+                        label="Password"
+                        value={signInForm.password}
+                        onChange={(value) => setSignInForm((current) => ({ ...current, password: value }))}
+                        placeholder="Password"
+                        autoComplete="current-password"
+                        className={inputClassName}
+                        labelClassName={labelClassName}
+                      />
+                      <div className="-mt-1 flex items-center justify-end gap-3 text-sm">
+                        <Link
+                          href={`/auth/forgot-password?next=${encodeURIComponent(safeNextPath)}`}
+                          className="font-medium text-neutral-500 transition-colors hover:text-neutral-950"
+                        >
+                          Forgot password?
+                        </Link>
+                      </div>
                       <button
                         type="button"
                         onClick={handleUserSignIn}
@@ -292,67 +273,35 @@ export function AuthPanel({ role, mode = "page", title, copy, nextPath, onSucces
                       </button>
                     </div>
                   ) : (
-                    <div className="mt-6 grid gap-4">
-                      <label>
-                        <span className={labelClassName}>Full name</span>
-                        <input
-                          value={signUpForm.name}
-                          onChange={(event) => setSignUpForm((current) => ({ ...current, name: event.target.value }))}
-                          placeholder="Full name"
-                          className={inputClassName}
-                        />
-                      </label>
+	                    <div className="mt-6 grid gap-4">
+	                      <label>
+	                        <span className={labelClassName}>Business name</span>
+	                        <input
+	                          value={signUpForm.businessName}
+	                          onChange={(event) => setSignUpForm((current) => ({ ...current, businessName: event.target.value }))}
+	                          placeholder="Business name"
+	                          className={inputClassName}
+	                        />
+	                      </label>
                       <label>
                         <span className={labelClassName}>Email</span>
                         <input
                           value={signUpForm.email}
                           onChange={(event) => setSignUpForm((current) => ({ ...current, email: event.target.value }))}
                           placeholder="Email address"
+                          autoComplete="email"
                           className={inputClassName}
                         />
                       </label>
-                      <label>
-                        <span className={labelClassName}>Phone number</span>
-                        <input
-                          value={signUpForm.phone}
-                          onChange={(event) => setSignUpForm((current) => ({ ...current, phone: event.target.value }))}
-                          placeholder="Phone number"
-                          className={inputClassName}
-                        />
-                      </label>
-                      <label>
-                        <span className={labelClassName}>Password</span>
-                        <input
-                          type="password"
-                          value={signUpForm.password}
-                          onChange={(event) =>
-                            setSignUpForm((current) => ({ ...current, password: event.target.value }))
-                          }
-                          placeholder="Create password"
-                          className={inputClassName}
-                        />
-                      </label>
-                      <label>
-                        <span className={labelClassName}>Confirm password</span>
-                        <input
-                          type="password"
-                          value={signUpForm.confirmPassword}
-                          onChange={(event) =>
-                            setSignUpForm((current) => ({ ...current, confirmPassword: event.target.value }))
-                          }
-                          placeholder="Confirm password"
-                          className={inputClassName}
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={handleUserSignUp}
-                        disabled={submitting}
-                        className="inline-flex min-h-[52px] items-center justify-center rounded-[14px] bg-ember px-6 text-sm font-semibold text-white"
-                      >
-                        {submitting ? "Creating Account..." : "Create Account"}
-                      </button>
-                    </div>
+	                      <button
+	                        type="button"
+	                        onClick={handleUserSignUp}
+	                        disabled={submitting}
+	                        className="inline-flex min-h-[52px] items-center justify-center rounded-[14px] bg-ember px-6 text-sm font-semibold text-white"
+	                      >
+	                        {submitting ? "Sending Request..." : "Request Partner Access"}
+	                      </button>
+	                    </div>
                   )}
                 </>
               ) : (
@@ -366,16 +315,15 @@ export function AuthPanel({ role, mode = "page", title, copy, nextPath, onSucces
                       className={inputClassName}
                     />
                   </label>
-                  <label>
-                    <span className={labelClassName}>Password</span>
-                    <input
-                      type="password"
-                      value={adminForm.password}
-                      onChange={(event) => setAdminForm((current) => ({ ...current, password: event.target.value }))}
-                      placeholder="Admin password"
-                      className={inputClassName}
-                    />
-                  </label>
+                  <PasswordField
+                    label="Password"
+                    value={adminForm.password}
+                    onChange={(value) => setAdminForm((current) => ({ ...current, password: value }))}
+                    placeholder="Admin password"
+                    autoComplete="current-password"
+                    className={inputClassName}
+                    labelClassName={labelClassName}
+                  />
                   <button
                     type="button"
                     onClick={handleAdminSignIn}

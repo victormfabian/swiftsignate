@@ -78,10 +78,10 @@ export const dashboardMetrics = [
 ];
 
 export const recentBookings = [
-  { ref: "SS-20491", lane: "Lagos -> Nairobi", eta: "4h 20m", status: "In transit" },
-  { ref: "SS-20488", lane: "Abuja -> Accra", eta: "Awaiting load", status: "Queued" },
-  { ref: "SS-20472", lane: "Port Harcourt -> Dakar", eta: "Delivered 08:40", status: "Delivered" },
-  { ref: "SS-20451", lane: "Ibadan -> Kigali", eta: "Customs review", status: "Review" }
+  { ref: "SS20491", lane: "Lagos -> Nairobi", eta: "4h 20m", status: "In transit" },
+  { ref: "SS20488", lane: "Abuja -> Accra", eta: "Awaiting load", status: "Queued" },
+  { ref: "SS20472", lane: "Port Harcourt -> Dakar", eta: "Delivered 08:40", status: "Delivered" },
+  { ref: "SS20451", lane: "Ibadan -> Kigali", eta: "Customs review", status: "Review" }
 ];
 
 export const quickActions = [
@@ -97,7 +97,7 @@ export const quickActions = [
 
 export const trackingRecords = [
   {
-    ref: "SS-20491",
+    ref: "SS20491",
     customer: "BlueWave Retail",
     route: "Lagos -> Nairobi",
     status: "In transit",
@@ -106,7 +106,7 @@ export const trackingRecords = [
     checkpoints: ["Booked", "Picked up", "At regional hub", "In transit", "Out for delivery"]
   },
   {
-    ref: "SS-20488",
+    ref: "SS20488",
     customer: "Prime Mart",
     route: "Abuja -> Accra",
     status: "Queued",
@@ -115,7 +115,7 @@ export const trackingRecords = [
     checkpoints: ["Booked", "Preparing load", "Queued", "In transit", "Delivered"]
   },
   {
-    ref: "SS-20472",
+    ref: "SS20472",
     customer: "Northline Foods",
     route: "Port Harcourt -> Dakar",
     status: "Delivered",
