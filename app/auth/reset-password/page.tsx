@@ -10,5 +10,5 @@ type ResetPasswordRouteProps = {
 export default async function ResetPasswordRoute({ searchParams }: ResetPasswordRouteProps) {
   const params = await searchParams;
 
-  return <PasswordRecoveryPanel mode="reset" token={params.token} nextPath={params.next || "/dashboard/book"} />;
+  return <PasswordRecoveryPanel mode="reset" token={params.token} nextPath={params.next || "/dashboard/track"} />;
 }

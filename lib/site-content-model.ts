@@ -358,7 +358,7 @@ export const defaultBookingConfig: BookingConfig = {
 export const defaultSiteContent: SiteContent = {
   navigation: {
     logoMedia: "",
-    contactButtonLabel: "Get in Contact",
+    contactButtonLabel: "Contact Us",
     contactModalTitle: "Tell us about your shipment or support request.",
     contactModalSubmitLabel: "Send Request",
     whatsappHref: "",
@@ -376,7 +376,7 @@ export const defaultSiteContent: SiteContent = {
     eyebrow: "Swift Signate Logistics",
     title: "Reliable logistics services for businesses and everyday deliveries.",
     copy:
-      "We help you move packages, stock, and commercial goods with simple booking, clear tracking, and dependable delivery support.",
+      "We help you monitor packages, stock, and commercial goods with clear tracking updates and dependable delivery support.",
     backgroundImage:
       "linear-gradient(90deg, rgba(10,10,10,0.72) 0%, rgba(10,10,10,0.58) 34%, rgba(10,10,10,0.28) 62%, rgba(10,10,10,0.18) 100%), url('https://images.pexels.com/photos/31856778/pexels-photo-31856778.jpeg?cs=srgb&dl=pexels-felipe-silva-1458994757-31856778.jpg&fm=jpg')",
     bookButtonLabel: "Book Shipment",
@@ -400,16 +400,16 @@ export const defaultSiteContent: SiteContent = {
   },
   process: {
     eyebrow: "How It Works",
-    title: "Book a shipment, receive a tracking number, and follow the delivery.",
+    title: "Receive a tracking number and follow the delivery.",
     copy:
-      "Every booking creates a tracking number automatically, so customers can look up the shipment while the Swift Signate team updates the status as it moves.",
+      "Every shipment carries a tracking number, so customers can look up the status while the Swift Signate team updates it as it moves.",
     steps: processSteps
   },
   contactCta: {
     eyebrow: "Ready to Ship?",
     title: "Let Swift Signate handle your next delivery.",
     copy:
-      "Speak with our team, request a quote, or track an existing shipment through a simple and familiar customer experience.",
+      "Speak with our team or track an existing shipment through a simple and familiar customer experience.",
     primaryLabel: "Request a Quote",
     secondaryLabel: "Track Shipment"
   },
@@ -444,14 +444,19 @@ export const defaultSiteContent: SiteContent = {
 
 export function mergeSiteContent(content: Partial<SiteContent> | null | undefined): SiteContent {
   const parsed = content ?? {};
+  const navigation = {
+    ...defaultSiteContent.navigation,
+    ...parsed.navigation
+  };
+
+  if (navigation.contactButtonLabel === "Get in Contact") {
+    navigation.contactButtonLabel = defaultSiteContent.navigation.contactButtonLabel;
+  }
 
   return {
     ...defaultSiteContent,
     ...parsed,
-    navigation: {
-      ...defaultSiteContent.navigation,
-      ...parsed.navigation
-    },
+    navigation,
     footer: {
       ...defaultSiteContent.footer,
       ...parsed.footer

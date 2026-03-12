@@ -248,6 +248,7 @@ function TrustCard({
 
 export function LandingPage() {
   const [activeHeroPanel, setActiveHeroPanel] = useState<"track" | null>(null);
+  const [contactOpen, setContactOpen] = useState(false);
   const [showDiscoverCue, setShowDiscoverCue] = useState(true);
   const heroPanelRef = useRef<HTMLElement | null>(null);
   const servicesSectionRef = useRef<HTMLElement | null>(null);
@@ -303,7 +304,7 @@ export function LandingPage() {
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.58)_0%,rgba(0,0,0,0.38)_34%,rgba(0,0,0,0.62)_100%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.08),transparent_22%)]" />
         <div className="absolute inset-x-0 top-0 z-20 px-4 pt-4 md:px-6">
-          <Navigation />
+          <Navigation showContactButton={false} contactOpen={contactOpen} onContactOpenChange={setContactOpen} />
         </div>
         <div className="relative flex min-h-[100svh] items-center px-4 pb-28 pt-28 md:px-6 md:pb-32 md:pt-32">
           <div className="mx-auto w-full max-w-6xl">
@@ -320,7 +321,7 @@ export function LandingPage() {
               <p className="mt-6 max-w-2xl text-base leading-7 text-white sm:text-lg sm:leading-8 md:text-xl">
                 {content.hero.copy}
               </p>
-              <div className="mx-auto mt-10 grid max-w-[280px] grid-cols-1 gap-3 sm:mx-0 sm:max-w-[360px] sm:grid-cols-2">
+              <div className="mx-auto mt-10 grid w-full max-w-[250px] grid-cols-1 gap-3 sm:mx-0 sm:max-w-[520px] sm:grid-cols-2">
                 <GlowButton
                   onClick={handleTrackPanelOpen}
                   label={content.hero.trackButtonLabel}
@@ -329,12 +330,13 @@ export function LandingPage() {
                   ariaControls="hero-service-modal"
                   ariaExpanded={activeHeroPanel === "track"}
                 />
-                <Link
-                  href="/dashboard/book"
-                  className="slant-button inline-flex min-h-[52px] w-full items-center justify-center border border-white/24 bg-black/24 px-5 py-3 text-sm font-medium text-white backdrop-blur-sm transition-colors hover:bg-black/32"
-                >
-                  <strong>{content.hero.bookButtonLabel}</strong>
-                </Link>
+                <GlowButton
+                  onClick={() => setContactOpen(true)}
+                  label={content.navigation.contactButtonLabel}
+                  variant="ghost"
+                  shape="parallelogram"
+                  className="w-full justify-center px-5"
+                />
               </div>
             </motion.div>
           </div>
@@ -511,19 +513,13 @@ export function LandingPage() {
             <p className="mt-5 text-lg leading-8 text-neutral-600">{content.contactCta.copy}</p>
           </div>
 
-          <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:justify-center lg:flex-col lg:justify-start">
+          <div className="flex flex-col items-stretch gap-3 lg:justify-start">
             <GlowButton
-              href="/dashboard/book"
-              label={content.contactCta.primaryLabel}
+              href="/dashboard/track"
+              label={content.contactCta.secondaryLabel}
               shape="parallelogram"
               className="w-full sm:min-w-[220px]"
             />
-            <Link
-              href="/dashboard/track"
-              className="slant-button inline-flex min-h-[52px] items-center justify-center border border-black/10 bg-white px-8 py-3 text-sm font-medium text-neutral-900 transition-colors hover:border-orange-300 hover:text-ember sm:min-w-[220px]"
-            >
-              <strong>{content.contactCta.secondaryLabel}</strong>
-            </Link>
           </div>
         </div>
       </section>

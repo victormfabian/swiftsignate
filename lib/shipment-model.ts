@@ -187,6 +187,14 @@ export type TransferRequestInput = BookingInput & {
 
 export const STATUS_FLOW: ShipmentStatus[] = ["Booked", "Picked up", "In transit", "Out for delivery", "Delivered"];
 
+export function formatShipmentStatusLabel(status: ShipmentStatus | string) {
+  if (status === "Picked up") {
+    return "Shipment received";
+  }
+
+  return status;
+}
+
 export const seedShipments: Shipment[] = [
   {
     ref: "SS100003",
@@ -292,7 +300,7 @@ export function buildLastUpdate(status: ShipmentStatus, shipment: Pick<Shipment,
     case "Booked":
       return `Booking confirmed for ${shipment.origin} to ${shipment.destination}.`;
     case "Picked up":
-      return `Shipment has been picked up from ${shipment.origin}.`;
+      return `Shipment has been received from ${shipment.origin}.`;
     case "In transit":
       return `Shipment is currently in transit to ${shipment.destination}.`;
     case "Out for delivery":

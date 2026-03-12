@@ -55,10 +55,10 @@ export function AuthPanel({ role, mode = "page", title, nextPath, initialNotice 
 
   const safeNextPath = useMemo(() => {
     if (!nextPath) {
-      return "/dashboard/book";
+      return "/dashboard/track";
     }
 
-    return nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/dashboard/book";
+    return nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/dashboard/track";
   }, [nextPath]);
 
   const handleUserSignIn = () => {

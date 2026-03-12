@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useAuthSession } from "@/components/auth-session";
 import { ConsoleShell } from "@/components/console-shell";
 import {
-  type PartnerAccount,
+  type BookingInput,
   previewTrackingNumber,
   type ContactRequest,
   type PaymentRequest,
@@ -16,7 +16,7 @@ import {
 import { type ContentCard, type SiteContent, useSiteContentStore } from "@/components/site-content-store";
 import { builtInIconKeys, resolveMediaSource } from "@/lib/media-utils";
 import { defaultBookingConfig } from "@/lib/site-content-model";
-import { normalizeTrackingNumber } from "@/lib/shipment-model";
+import { formatShipmentStatusLabel, normalizeTrackingNumber } from "@/lib/shipment-model";
 
 const shipmentStatuses: ShipmentStatus[] = ["Booked", "Picked up", "In transit", "Out for delivery", "Delivered"];
 const paymentMethodOptions = ["Direct transfer", "Paystack"] as const;
@@ -72,11 +72,29 @@ type MetricCardProps = {
   delay?: number;
 };
 
-type AdminWorkspaceTab = "home" | "contact" | "partners" | "booking" | "request" | "tracking" | "content";
+type AdminWorkspaceTab = "home" | "contact" | "booking" | "tracking" | "content";
 type AdminSectionLink = {
   id: string;
   label: string;
   detail: string;
+};
+
+type AdminShipmentCreateDraft = {
+  senderName: string;
+  senderEmail: string;
+  senderPhone: string;
+  senderOriginCountry: string;
+  senderState: string;
+  receiverName: string;
+  receiverAddress: string;
+  receiverPostalCode: string;
+  receiverCountry: string;
+  receiverCity: string;
+  receiverEmail: string;
+  receiverPhone: string;
+  eta: string;
+  packageType: string;
+  paymentMethod: BookingInput["paymentMethod"];
 };
 
 function MetricCard({ label, value, detail, delay = 0 }: MetricCardProps) {
@@ -466,19 +484,122 @@ function syncPaymentRequestDraftDetails(request: PaymentRequest) {
   };
 }
 
+function createEmptyShipmentPartyDetails(): NonNullable<BookingInput["details"]>["sender"] {
+  return {
+    name: "",
+    company: "",
+    email: "",
+    phone: "",
+    address1: "",
+    address2: "",
+    city: "",
+    postalCode: "",
+    residential: false
+  };
+}
+
+function createAdminShipmentCreateDraft(): AdminShipmentCreateDraft {
+  return {
+    senderName: "",
+    senderEmail: "",
+    senderPhone: "",
+    senderOriginCountry: "",
+    senderState: "",
+    receiverName: "",
+    receiverAddress: "",
+    receiverPostalCode: "",
+    receiverCountry: "",
+    receiverCity: "",
+    receiverEmail: "",
+    receiverPhone: "",
+    eta: "",
+    packageType: "",
+    paymentMethod: "Direct transfer"
+  };
+}
+
+function buildAdminShipmentDetails(draft: AdminShipmentCreateDraft): NonNullable<BookingInput["details"]> {
+  const sender = createEmptyShipmentPartyDetails();
+  const receiver = createEmptyShipmentPartyDetails();
+
+  sender.name = draft.senderName.trim();
+  sender.email = draft.senderEmail.trim().toLowerCase();
+  sender.phone = draft.senderPhone.trim();
+  sender.city = draft.senderState.trim();
+
+  receiver.name = draft.receiverName.trim();
+  receiver.address1 = draft.receiverAddress.trim();
+  receiver.postalCode = draft.receiverPostalCode.trim();
+  receiver.city = draft.receiverCity.trim();
+  receiver.email = draft.receiverEmail.trim().toLowerCase();
+  receiver.phone = draft.receiverPhone.trim();
+
+  return {
+    shipperType: "",
+    route: {
+      fromCountry: draft.senderOriginCountry.trim(),
+      fromCity: draft.senderState.trim(),
+      toCountry: draft.receiverCountry.trim(),
+      toCity: draft.receiverCity.trim(),
+      shipmentDate: "",
+      residential: null
+    },
+    shipment: {
+      packagingType: draft.packageType.trim(),
+      higherLiability: null,
+      weightUnit: "kg",
+      dimensionUnit: "cm",
+      packages: []
+    },
+    sender,
+    receiver,
+    quoteSort: "fastest",
+    selectedQuote: null,
+    payment: {
+      method: draft.paymentMethod
+    }
+  };
+}
+
+function formatAdminShipmentLocation(primary: string, country: string) {
+  return [primary.trim(), country.trim()].filter(Boolean).join(", ");
+}
+
+function formatAdminShipmentEta(value: string) {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  const parsedValue = new Date(trimmedValue);
+
+  if (Number.isNaN(parsedValue.getTime())) {
+    return trimmedValue;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(parsedValue);
+}
+
 export function AdminPage() {
   const {
     shipments,
     paymentRequests,
-    partnerAccounts,
     customerUpdates,
     contactRequests,
     nextSequence,
+    bookShipment,
     approvePaymentRequest,
     sendPaymentRequestQuote,
-    approvePartnerAccount,
     rejectPaymentRequest,
     updateShipmentRecord,
+    deleteShipment,
     updatePaymentRequest,
     updateContactRequest
   } = useShipmentStore();
@@ -499,16 +620,17 @@ export function AdminPage() {
     [paymentRequests]
   );
   const pendingTransfers = requestRecords.filter((request) => ["Payment submitted", "Awaiting verification"].includes(request.status));
-  const pendingPartners = partnerAccounts.filter((partner) => partner.status === "pending");
 
   const [selectedShipmentRef, setSelectedShipmentRef] = useState("");
   const [shipmentDraft, setShipmentDraft] = useState<Shipment | null>(null);
+  const [createShipmentDraft, setCreateShipmentDraft] = useState<AdminShipmentCreateDraft>(() =>
+    createAdminShipmentCreateDraft()
+  );
   const [selectedRequestId, setSelectedRequestId] = useState("");
   const [requestDraft, setRequestDraft] = useState<PaymentRequest | null>(null);
-  const [selectedPartnerId, setSelectedPartnerId] = useState("");
   const [shipmentMessage, setShipmentMessage] = useState("");
+  const [createShipmentMessage, setCreateShipmentMessage] = useState("");
   const [requestMessage, setRequestMessage] = useState("");
-  const [partnerMessage, setPartnerMessage] = useState("");
   const [contentDraft, setContentDraft] = useState<SiteContent>(cloneContent(content));
   const [contentMessage, setContentMessage] = useState("");
   const [selectedContactRequestId, setSelectedContactRequestId] = useState("");
@@ -520,7 +642,16 @@ export function AdminPage() {
   const [desktopSidebarVisible, setDesktopSidebarVisible] = useState(true);
 
   useEffect(() => {
-    if (!selectedShipmentRef && shipments.length > 0) {
+    const selectedStillExists = shipments.some((shipment) => shipment.ref === selectedShipmentRef);
+
+    if (shipments.length === 0) {
+      if (selectedShipmentRef) {
+        setSelectedShipmentRef("");
+      }
+      return;
+    }
+
+    if (!selectedShipmentRef || !selectedStillExists) {
       setSelectedShipmentRef(shipments[0].ref);
     }
   }, [shipments, selectedShipmentRef]);
@@ -531,12 +662,6 @@ export function AdminPage() {
       setSelectedRequestId(preferred.id);
     }
   }, [requestRecords, selectedRequestId]);
-
-  useEffect(() => {
-    if (!selectedPartnerId && partnerAccounts.length > 0) {
-      setSelectedPartnerId((pendingPartners[0] ?? partnerAccounts[0]).id);
-    }
-  }, [partnerAccounts, pendingPartners, selectedPartnerId]);
 
   useEffect(() => {
     if (!selectedContactRequestId && contactRequests.length > 0) {
@@ -567,8 +692,7 @@ export function AdminPage() {
     shipments: shipments.length,
     active: shipments.filter((shipment) => shipment.status !== "Delivered").length,
     updates: customerUpdates.filter((update) => !update.read).length,
-    contactRequests: contactRequests.filter((request) => !request.read).length,
-    pendingPartners: pendingPartners.length
+    contactRequests: contactRequests.filter((request) => !request.read).length
   };
 
   const workspaceTabs: Array<{ id: AdminWorkspaceTab; label: string; detail: string }> = [
@@ -583,19 +707,9 @@ export function AdminPage() {
       detail: `${contactRequests.length} messages`
     },
     {
-      id: "partners",
-      label: "Partners",
-      detail: `${pendingPartners.length} pending`
-    },
-    {
       id: "booking",
       label: "Booking",
-      detail: "Options and locations"
-    },
-    {
-      id: "request",
-      label: "Request",
-      detail: `${requestRecords.length} shipment requests`
+      detail: "Create shipments and setup"
     },
     {
       id: "tracking",
@@ -610,23 +724,16 @@ export function AdminPage() {
   ];
   const workspaceSections: Record<AdminWorkspaceTab, AdminSectionLink[]> = {
     home: [
-      { id: "home-overview", label: "Overview", detail: "A quick view of requests, partners, contacts, and tracking" }
+      { id: "home-overview", label: "Overview", detail: "A quick view of requests, contacts, and tracking" }
     ],
     contact: [
       { id: "contacts-list", label: "Messages", detail: "All website contact form submissions" },
       { id: "contacts-details", label: "Message details", detail: "Read and update a single message" }
     ],
-    partners: [
-      { id: "partners-list", label: "Partner approvals", detail: "Approve registered businesses" },
-      { id: "partners-details", label: "Partner details", detail: "Review the business and send access" }
-    ],
     booking: [
+      { id: "booking-create-shipment", label: "Create shipment", detail: "Issue a shipment directly from the admin workspace" },
       { id: "setup-locations", label: "Locations", detail: "Manage origin and destination countries and cities" },
       { id: "setup-packaging", label: "Packaging", detail: "Packaging types, icons, and package count presets" }
-    ],
-    request: [
-      { id: "transfers-list", label: "Shipment requests", detail: "Inquiry, quote, contact, and payment proof" },
-      { id: "transfers-details", label: "Request details", detail: "Set price, send quote, and approve payment" },
     ],
     tracking: [
       { id: "shipments-list", label: "Shipment records", detail: "Tracking numbers, updates, and invoices" },
@@ -645,7 +752,6 @@ export function AdminPage() {
   const activeWorkspaceMeta = workspaceTabs.find((tab) => tab.id === activeWorkspaceTab) ?? workspaceTabs[0];
   const activeSectionLinks = workspaceSections[activeWorkspaceTab];
   const activeSectionMeta = activeSectionLinks.find((section) => section.id === activeWorkspaceSection) ?? activeSectionLinks[0];
-  const selectedPartner = partnerAccounts.find((partner) => partner.id === selectedPartnerId) ?? pendingPartners[0] ?? partnerAccounts[0] ?? null;
 
   useEffect(() => {
     setActiveWorkspaceSection(workspaceSections[activeWorkspaceTab][0]?.id ?? "");
@@ -664,6 +770,16 @@ export function AdminPage() {
         [field]: field === "ref" ? normalizeTrackingNumber(String(value)) : value
       };
     });
+  };
+
+  const handleCreateShipmentField = <K extends keyof AdminShipmentCreateDraft>(
+    field: K,
+    value: AdminShipmentCreateDraft[K]
+  ) => {
+    setCreateShipmentDraft((current) => ({
+      ...current,
+      [field]: value
+    }));
   };
 
   const handleRequestField = <K extends keyof PaymentRequest>(field: K, value: PaymentRequest[K]) => {
@@ -1350,6 +1466,101 @@ export function AdminPage() {
     }
   };
 
+  const handleCreateShipment = async () => {
+    const nextDraft = {
+      ...createShipmentDraft,
+      senderName: createShipmentDraft.senderName.trim(),
+      senderEmail: createShipmentDraft.senderEmail.trim().toLowerCase(),
+      senderPhone: createShipmentDraft.senderPhone.trim(),
+      senderOriginCountry: createShipmentDraft.senderOriginCountry.trim(),
+      senderState: createShipmentDraft.senderState.trim(),
+      receiverName: createShipmentDraft.receiverName.trim(),
+      receiverAddress: createShipmentDraft.receiverAddress.trim(),
+      receiverPostalCode: createShipmentDraft.receiverPostalCode.trim(),
+      receiverCountry: createShipmentDraft.receiverCountry.trim(),
+      receiverCity: createShipmentDraft.receiverCity.trim(),
+      receiverEmail: createShipmentDraft.receiverEmail.trim().toLowerCase(),
+      receiverPhone: createShipmentDraft.receiverPhone.trim(),
+      eta: createShipmentDraft.eta.trim(),
+      packageType: createShipmentDraft.packageType.trim()
+    };
+    const origin = formatAdminShipmentLocation(nextDraft.senderState, nextDraft.senderOriginCountry);
+    const destination = formatAdminShipmentLocation(nextDraft.receiverCity, nextDraft.receiverCountry);
+    const eta = formatAdminShipmentEta(nextDraft.eta);
+    const senderEmail = nextDraft.senderEmail || nextDraft.receiverEmail;
+    const senderPhone = nextDraft.senderPhone || nextDraft.receiverPhone;
+
+    const hasRequiredFields = [
+      nextDraft.senderName,
+      nextDraft.senderOriginCountry,
+      nextDraft.senderState,
+      nextDraft.receiverName,
+      nextDraft.receiverAddress,
+      nextDraft.receiverPostalCode,
+      nextDraft.receiverCountry,
+      nextDraft.receiverCity,
+      nextDraft.receiverEmail,
+      nextDraft.receiverPhone,
+      nextDraft.eta,
+      nextDraft.packageType
+    ].every(Boolean);
+
+    if (!hasRequiredFields) {
+      setCreateShipmentMessage("Complete the sender and receiver details, then add the ETA and package summary.");
+      return;
+    }
+
+    try {
+      const shipment = await bookShipment({
+        customer: nextDraft.senderName,
+        customerEmail: senderEmail,
+        customerPhone: senderPhone,
+        origin,
+        destination,
+        eta,
+        packageType: nextDraft.packageType,
+        paymentMethod: nextDraft.paymentMethod,
+        details: buildAdminShipmentDetails(nextDraft)
+      });
+      const notificationEmail = nextDraft.receiverEmail || senderEmail;
+      setCreateShipmentDraft(createAdminShipmentCreateDraft());
+      setCreateShipmentMessage(`Shipment ${shipment.ref} was created. Tracking details were sent to ${notificationEmail}.`);
+      setSelectedShipmentRef(shipment.ref);
+    } catch (error) {
+      setCreateShipmentMessage(error instanceof Error ? error.message : "Could not create the shipment.");
+    }
+  };
+
+  const handleDeleteShipment = async () => {
+    if (!selectedShipmentRef) {
+      return;
+    }
+
+    const confirmed =
+      typeof window === "undefined"
+        ? true
+        : window.confirm(`Delete shipment ${selectedShipmentRef}? This action cannot be undone.`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    const refToDelete = selectedShipmentRef;
+    const currentIndex = shipments.findIndex((shipment) => shipment.ref === refToDelete);
+    const remainingRefs = shipments.filter((shipment) => shipment.ref !== refToDelete).map((shipment) => shipment.ref);
+    const nextRef = remainingRefs[currentIndex] ?? remainingRefs[Math.max(currentIndex - 1, 0)] ?? "";
+
+    try {
+      await deleteShipment(refToDelete);
+      setShipmentDraft(null);
+      setSelectedShipmentRef(nextRef);
+      setActiveWorkspaceSection("shipments-list");
+      setShipmentMessage(`Shipment ${refToDelete} was deleted.`);
+    } catch (error) {
+      setShipmentMessage(error instanceof Error ? error.message : "Could not delete the shipment.");
+    }
+  };
+
   const persistRequestDraft = async () => {
     if (!requestDraft) {
       return;
@@ -1401,7 +1612,7 @@ export function AdminPage() {
       await persistRequestDraft();
       const shipment = await approvePaymentRequest(requestDraft.id);
       if (shipment) {
-        setRequestMessage(`Payment confirmed. The invoice and tracking number ${shipment.ref} were issued automatically.`);
+        setRequestMessage(`Payment confirmed. Shipment ${shipment.ref} was created and tracking details were sent automatically.`);
         setSelectedShipmentRef(shipment.ref);
         return;
       }
@@ -1427,23 +1638,6 @@ export function AdminPage() {
       setRequestMessage(`Shipment request ${requestDraft.id} was rejected and the customer was notified.`);
     } catch {
       setRequestMessage("Could not reject the shipment request.");
-    }
-  };
-
-  const handleApprovePartner = async () => {
-    if (!selectedPartnerId) {
-      return;
-    }
-
-    try {
-      const warning = await approvePartnerAccount(selectedPartnerId);
-      setPartnerMessage(
-        warning
-          ? `${warning} The partner was still approved.`
-          : "Partner account approved. If email delivery is configured, the temporary password has been sent to the business."
-      );
-    } catch {
-      setPartnerMessage("Could not approve that partner account.");
     }
   };
 
@@ -1890,6 +2084,14 @@ export function AdminPage() {
 
   const renderShipmentSetupEditor = () => {
     const countryNames = contentDraft.bookingConfig.routeCountries.map((country) => country.name).filter(Boolean);
+    const citySuggestions = Array.from(
+      new Set(
+        contentDraft.bookingConfig.routeCountries.flatMap((country) => country.cities.map((city) => city.trim()).filter(Boolean))
+      )
+    );
+    const packagingSuggestions = Array.from(
+      new Set(contentDraft.bookingConfig.packagingOptions.map((option) => option.label.trim()).filter(Boolean))
+    );
 
     return (
       <div className="mt-6 space-y-5">
@@ -1897,6 +2099,203 @@ export function AdminPage() {
           <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Booking setup</div>
           <div className="mt-2 text-sm text-neutral-500">
             Define origin and destination locations, manage route rates, and control the packaging types shown during booking.
+          </div>
+
+          <div
+            id="booking-create-shipment"
+            className={
+              isSectionVisible("booking-create-shipment")
+                ? "mt-4 rounded-[20px] bg-white p-5 shadow-[0_12px_28px_rgba(15,23,42,0.05)]"
+                : "hidden"
+            }
+          >
+            <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+              <div>
+                <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Admin shipment creation</div>
+                <h3 className="mt-2 text-xl font-semibold text-neutral-950">Create a shipment without a public booking request</h3>
+              </div>
+              <div className="text-sm leading-6 text-neutral-500">
+                The receiver email gets the tracking details for the shipment, and the sender and route details are stored with the record.
+              </div>
+            </div>
+
+            <datalist id="admin-shipment-country-options">
+              {countryNames.map((country) => (
+                <option key={country} value={country} />
+              ))}
+            </datalist>
+            <datalist id="admin-shipment-city-options">
+              {citySuggestions.map((city) => (
+                <option key={city} value={city} />
+              ))}
+            </datalist>
+            <datalist id="admin-shipment-package-options">
+              {packagingSuggestions.map((label) => (
+                <option key={label} value={label} />
+              ))}
+            </datalist>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <label>
+                <span className={labelClassName}>Next tracking number</span>
+                <input value={previewTrackingNumber(nextSequence)} readOnly className={`${fieldClassName} bg-[#fcfaf7]`} />
+              </label>
+              <div className="md:col-span-2 rounded-[18px] border border-black/8 bg-[#fcfaf7] p-4">
+                <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Sender details</div>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <label>
+                    <span className={labelClassName}>Name of the sender</span>
+                    <input
+                      value={createShipmentDraft.senderName}
+                      onChange={(event) => handleCreateShipmentField("senderName", event.target.value)}
+                      className={fieldClassName}
+                    />
+                  </label>
+                  <label>
+                    <span className={labelClassName}>Origin country</span>
+                    <input
+                      list="admin-shipment-country-options"
+                      value={createShipmentDraft.senderOriginCountry}
+                      onChange={(event) => handleCreateShipmentField("senderOriginCountry", event.target.value)}
+                      className={fieldClassName}
+                    />
+                  </label>
+                  <label>
+                    <span className={labelClassName}>State</span>
+                    <input
+                      list="admin-shipment-city-options"
+                      value={createShipmentDraft.senderState}
+                      onChange={(event) => handleCreateShipmentField("senderState", event.target.value)}
+                      className={fieldClassName}
+                    />
+                  </label>
+                  <label>
+                    <span className={labelClassName}>Sender email</span>
+                    <input
+                      type="email"
+                      value={createShipmentDraft.senderEmail}
+                      onChange={(event) => handleCreateShipmentField("senderEmail", event.target.value)}
+                      className={fieldClassName}
+                      placeholder="Optional"
+                    />
+                  </label>
+                  <label>
+                    <span className={labelClassName}>Sender phone</span>
+                    <input
+                      value={createShipmentDraft.senderPhone}
+                      onChange={(event) => handleCreateShipmentField("senderPhone", event.target.value)}
+                      className={fieldClassName}
+                      placeholder="Optional"
+                    />
+                  </label>
+                </div>
+              </div>
+              <div className="md:col-span-2 rounded-[18px] border border-black/8 bg-[#fcfaf7] p-4">
+                <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Receiver details</div>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <label>
+                    <span className={labelClassName}>Receiver name</span>
+                    <input
+                      value={createShipmentDraft.receiverName}
+                      onChange={(event) => handleCreateShipmentField("receiverName", event.target.value)}
+                      className={fieldClassName}
+                    />
+                  </label>
+                  <label>
+                    <span className={labelClassName}>Address</span>
+                    <input
+                      value={createShipmentDraft.receiverAddress}
+                      onChange={(event) => handleCreateShipmentField("receiverAddress", event.target.value)}
+                      className={fieldClassName}
+                    />
+                  </label>
+                  <label>
+                    <span className={labelClassName}>Post code</span>
+                    <input
+                      value={createShipmentDraft.receiverPostalCode}
+                      onChange={(event) => handleCreateShipmentField("receiverPostalCode", event.target.value)}
+                      className={fieldClassName}
+                    />
+                  </label>
+                  <label>
+                    <span className={labelClassName}>Country</span>
+                    <input
+                      list="admin-shipment-country-options"
+                      value={createShipmentDraft.receiverCountry}
+                      onChange={(event) => handleCreateShipmentField("receiverCountry", event.target.value)}
+                      className={fieldClassName}
+                    />
+                  </label>
+                  <label>
+                    <span className={labelClassName}>City</span>
+                    <input
+                      list="admin-shipment-city-options"
+                      value={createShipmentDraft.receiverCity}
+                      onChange={(event) => handleCreateShipmentField("receiverCity", event.target.value)}
+                      className={fieldClassName}
+                    />
+                  </label>
+                  <label>
+                    <span className={labelClassName}>Email</span>
+                    <input
+                      type="email"
+                      value={createShipmentDraft.receiverEmail}
+                      onChange={(event) => handleCreateShipmentField("receiverEmail", event.target.value)}
+                      className={fieldClassName}
+                    />
+                  </label>
+                  <label>
+                    <span className={labelClassName}>Phone number</span>
+                    <input
+                      value={createShipmentDraft.receiverPhone}
+                      onChange={(event) => handleCreateShipmentField("receiverPhone", event.target.value)}
+                      className={fieldClassName}
+                    />
+                  </label>
+                </div>
+              </div>
+              <label>
+                <span className={labelClassName}>Delivery timeline</span>
+                <input
+                  type="datetime-local"
+                  value={createShipmentDraft.eta}
+                  onChange={(event) => handleCreateShipmentField("eta", event.target.value)}
+                  className={fieldClassName}
+                />
+              </label>
+              <label>
+                <span className={labelClassName}>Package summary</span>
+                <input
+                  list="admin-shipment-package-options"
+                  value={createShipmentDraft.packageType}
+                  onChange={(event) => handleCreateShipmentField("packageType", event.target.value)}
+                  className={fieldClassName}
+                  placeholder="Documents"
+                />
+              </label>
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button type="button" onClick={() => void handleCreateShipment()} className={actionPrimaryClassName}>
+                Create shipment
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreateShipmentDraft(createAdminShipmentCreateDraft());
+                  setCreateShipmentMessage("");
+                }}
+                className={actionSecondaryClassName}
+              >
+                Reset form
+              </button>
+            </div>
+
+            {createShipmentMessage ? (
+              <div className="mt-5 rounded-[20px] border border-orange-200 bg-orange-50 px-4 py-3 text-sm leading-6 text-neutral-700">
+                {createShipmentMessage}
+              </div>
+            ) : null}
           </div>
 
           <div id="setup-locations" className={isSectionVisible("setup-locations") ? "mt-4 rounded-[20px] bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)]" : "hidden"}>
@@ -2437,7 +2836,7 @@ export function AdminPage() {
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
               <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Admin home</div>
-              <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Overview of shipments, contacts, and approvals</h2>
+              <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Overview of shipments, contacts, and updates</h2>
             </div>
             <div className="text-sm text-neutral-500">
               Use this screen for a quick snapshot, then switch to another tab to manage a specific area.
@@ -2446,448 +2845,34 @@ export function AdminPage() {
 
           <div className="mt-6 grid gap-4 xl:grid-cols-5">
             <MetricCard
-              label="Pending partners"
-              value={totals.pendingPartners.toString()}
-              detail="Business registrations waiting for admin approval."
-            />
-            <MetricCard
               label="Shipment requests"
               value={pendingTransfers.length.toString()}
               detail="Customer inquiries and payment proofs waiting for review."
-              delay={0.03}
             />
             <MetricCard
               label="All shipments"
               value={totals.shipments.toString()}
               detail={`${totals.active} shipments are still active in the network.`}
-              delay={0.06}
+              delay={0.03}
             />
             <MetricCard
               label="Customer updates"
               value={totals.updates.toString()}
               detail="Unread customer notifications currently stored in the shared shipment store."
-              delay={0.1}
+              delay={0.06}
             />
             <MetricCard
               label="Contact requests"
               value={totals.contactRequests.toString()}
               detail="Unread website contact submissions stored from the landing-page modal."
-              delay={0.12}
+              delay={0.1}
             />
             <MetricCard
               label="Next IDs"
               value={previewTrackingNumber(nextSequence)}
               detail="The next tracking number will be assigned on confirmation."
-              delay={0.15}
+              delay={0.12}
             />
-          </div>
-        </motion.section>
-        )}
-
-        {activeWorkspaceTab === "partners" && (
-        <motion.section
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className={panelClassName}
-        >
-          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-            <div>
-              <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Partner approvals</div>
-              <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Approve new business partners before they can sign in</h2>
-            </div>
-            <div className="text-sm text-neutral-500">
-              Approval emails a temporary password and unlocks the partner shipment workspace.
-            </div>
-          </div>
-
-          <div className="mt-6 space-y-5">
-            <div id="partners-list" className={isSectionVisible("partners-list") ? selectionPanelClassName : "hidden"}>
-              <div className="flex items-center justify-between gap-3 border-b border-black/6 pb-3">
-                <div>
-                  <div className="text-sm font-semibold text-neutral-950">Partner requests</div>
-                  <div className="mt-1 text-xs uppercase tracking-[0.16em] text-neutral-500">Select a business to review it</div>
-                </div>
-                <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-neutral-600">
-                  {partnerAccounts.length}
-                </div>
-              </div>
-              <div className="mt-4 space-y-3 xl:max-h-[70vh] xl:overflow-y-auto xl:pr-1">
-                {partnerAccounts.length === 0 ? (
-                  <div className="rounded-[20px] border border-black/8 bg-white p-5 text-sm leading-6 text-neutral-600">
-                    No partner registrations have been submitted yet.
-                  </div>
-                ) : (
-                  partnerAccounts.map((partner) => {
-                    const selected = partner.id === selectedPartnerId;
-
-                    return (
-                      <button
-                        key={partner.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedPartnerId(partner.id);
-                          setActiveWorkspaceSection("partners-details");
-                        }}
-                        className={[
-                          "w-full rounded-[24px] border p-5 text-left shadow-[0_10px_18px_rgba(140,110,78,0.05)] transition-colors",
-                          selected ? "border-orange-300 bg-orange-50/40" : "border-black/8 bg-white hover:border-orange-200"
-                        ].join(" ")}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-sm font-semibold text-neutral-950">{partner.businessName}</div>
-                            <div className="mt-1 text-sm text-neutral-600">{partner.email}</div>
-                          </div>
-                          <span
-                            className={[
-                              "rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em]",
-                              statusClasses(partner.status === "approved" ? "Approved" : "Inquiry received")
-                            ].join(" ")}
-                          >
-                            {partner.status}
-                          </span>
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-3 text-xs uppercase tracking-[0.16em] text-neutral-500">
-                          <span>{partner.createdAt}</span>
-                          {partner.phone ? <span>{partner.phone}</span> : <span>No phone yet</span>}
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            <div id="partners-details" className={isSectionVisible("partners-details") ? detailPanelClassName : "hidden"}>
-              {selectedPartner ? (
-                <>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <button
-                        type="button"
-                        onClick={() => setActiveWorkspaceSection("partners-list")}
-                        className="inline-flex min-h-[40px] items-center justify-center rounded-[12px] border border-black/8 bg-white px-4 text-sm font-medium text-neutral-700 transition-colors hover:border-orange-200"
-                      >
-                        Back to partner requests
-                      </button>
-                      <div className="mt-4 text-xs uppercase tracking-[0.18em] text-neutral-500">Selected business</div>
-                      <h3 className="mt-3 text-2xl font-semibold text-neutral-950">{selectedPartner.businessName}</h3>
-                    </div>
-                    <span
-                      className={[
-                        "rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em]",
-                        statusClasses(selectedPartner.status === "approved" ? "Approved" : "Inquiry received")
-                      ].join(" ")}
-                    >
-                      {selectedPartner.status}
-                    </span>
-                  </div>
-
-                  <div className="mt-6 grid gap-4 md:grid-cols-2">
-                    <label>
-                      <span className={labelClassName}>Business name</span>
-                      <input value={selectedPartner.businessName} readOnly className={fieldClassName} />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Business email</span>
-                      <input value={selectedPartner.email} readOnly className={fieldClassName} />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Business phone</span>
-                      <input value={selectedPartner.phone || "Not completed yet"} readOnly className={fieldClassName} />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Created</span>
-                      <input value={selectedPartner.createdAt} readOnly className={fieldClassName} />
-                    </label>
-                  </div>
-
-                  <div className="mt-6 flex flex-wrap gap-3">
-                    <button
-                      type="button"
-                      onClick={() => void handleApprovePartner()}
-                      disabled={selectedPartner.status === "approved"}
-                      className={actionPrimaryClassName}
-                    >
-                      {selectedPartner.status === "approved" ? "Already approved" : "Approve and email password"}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div className="text-sm leading-6 text-neutral-600">Select a partner request to review it.</div>
-              )}
-
-              {partnerMessage && (
-                <div className="mt-5 rounded-[20px] border border-orange-200 bg-orange-50 px-4 py-3 text-sm leading-6 text-neutral-700">
-                  {partnerMessage}
-                </div>
-              )}
-            </div>
-          </div>
-        </motion.section>
-        )}
-
-        {activeWorkspaceTab === "request" && (
-        <motion.section
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className={panelClassName}
-        >
-          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-            <div>
-              <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Shipment requests</div>
-              <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Review inquiries, send quotes, and confirm payment before invoice and tracking issuance</h2>
-            </div>
-            <div className="text-sm text-neutral-500">
-              Tracking numbers are only issued after a customer sends proof of payment and the admin confirms it.
-            </div>
-          </div>
-
-          <div className="mt-6 space-y-5">
-            <div id="transfers-list" className={isSectionVisible("transfers-list") ? selectionPanelClassName : "hidden"}>
-              <div className="flex items-center justify-between gap-3 border-b border-black/6 pb-3">
-                <div>
-                  <div className="text-sm font-semibold text-neutral-950">Shipment requests</div>
-                  <div className="mt-1 text-xs uppercase tracking-[0.16em] text-neutral-500">Select a request to review</div>
-                </div>
-                <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-neutral-600">
-                  {requestRecords.length}
-                </div>
-              </div>
-              <div className="mt-4 space-y-3 xl:max-h-[70vh] xl:overflow-y-auto xl:pr-1">
-              {requestRecords.length === 0 ? (
-                <div className="rounded-[20px] border border-black/8 bg-white p-5 text-sm leading-6 text-neutral-600">
-                  No shipment requests have been submitted yet.
-                </div>
-              ) : (
-                requestRecords.map((request) => {
-                  const selected = request.id === selectedRequestId;
-
-                  return (
-                    <button
-                      key={request.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedRequestId(request.id);
-                        setActiveWorkspaceSection("transfers-details");
-                      }}
-                      className={[
-                        "w-full rounded-[24px] border p-5 text-left shadow-[0_10px_18px_rgba(140,110,78,0.05)] transition-colors",
-                        selected ? "border-orange-300 bg-orange-50/40" : "border-black/8 bg-white hover:border-orange-200"
-                      ].join(" ")}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-semibold text-neutral-950">{request.serviceTitle}</div>
-                          <div className="mt-1 text-sm text-neutral-600">{request.customer}</div>
-                        </div>
-                        <span
-                          className={[
-                            "rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em]",
-                            statusClasses(request.status)
-                          ].join(" ")}
-                        >
-                          {request.status}
-                        </span>
-                      </div>
-                      <div className="mt-3 text-sm text-neutral-700">
-                        {request.origin} {"->"} {request.destination}
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-3 text-xs uppercase tracking-[0.16em] text-neutral-500">
-                        <span>{request.id}</span>
-                        <span>{new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(request.amount)}</span>
-                        <span>{request.createdAt}</span>
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-            </div>
-
-            <div id="transfers-details" className={isSectionVisible("transfers-details") ? detailPanelClassName : "hidden"}>
-              {requestDraft ? (
-                <>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <button
-                        type="button"
-                        onClick={() => setActiveWorkspaceSection("transfers-list")}
-                        className="inline-flex min-h-[40px] items-center justify-center rounded-[12px] border border-black/8 bg-white px-4 text-sm font-medium text-neutral-700 transition-colors hover:border-orange-200"
-                      >
-                        Back to shipment requests
-                      </button>
-                      <div className="mt-4 text-xs uppercase tracking-[0.18em] text-neutral-500">Selected request</div>
-                      <h3 className="mt-3 text-2xl font-semibold text-neutral-950">{requestDraft.id}</h3>
-                    </div>
-                    <span
-                      className={[
-                        "rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em]",
-                        statusClasses(requestDraft.status)
-                      ].join(" ")}
-                    >
-                      {requestDraft.status}
-                    </span>
-                  </div>
-
-                  <div className="mt-6 grid gap-4 md:grid-cols-2">
-                    <label>
-                      <span className={labelClassName}>Customer</span>
-                      <input value={requestDraft.customer} readOnly className={fieldClassName} />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Quoted service</span>
-                      <input value={requestDraft.serviceTitle} readOnly className={fieldClassName} />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Customer email</span>
-                      <input value={requestDraft.customerEmail} readOnly className={fieldClassName} />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Customer phone</span>
-                      <input value={requestDraft.customerPhone} readOnly className={fieldClassName} />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Origin</span>
-                      <input value={requestDraft.origin} readOnly className={fieldClassName} />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Destination</span>
-                      <input value={requestDraft.destination} readOnly className={fieldClassName} />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Delivery timeline</span>
-                      <input value={requestDraft.eta} readOnly className={fieldClassName} />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Shipping date</span>
-                      <input value={requestDraft.details?.route.shipmentDate ?? ""} readOnly className={fieldClassName} />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Package summary</span>
-                      <input value={requestDraft.packageType} readOnly className={fieldClassName} />
-                    </label>
-                    <div>
-                      <span className={labelClassName}>Status</span>
-                      <div className={`${fieldClassName} inline-flex items-center`}>
-                        {requestDraft.status}
-                      </div>
-                    </div>
-                    <label>
-                      <span className={labelClassName}>Invoice number</span>
-                      <input value={requestDraft.invoiceNumber ?? "Issued after payment approval"} readOnly className={fieldClassName} />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Invoice issued</span>
-                      <input value={requestDraft.invoiceIssuedAt ?? "Pending approval"} readOnly className={fieldClassName} />
-                    </label>
-                    <label className="md:col-span-2">
-                      <span className={labelClassName}>Admin note or quote message</span>
-                      <textarea
-                        value={requestDraft.note}
-                        onChange={(event) => handleRequestField("note", event.target.value)}
-                        className={areaClassName}
-                      />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Bank name</span>
-                      <input
-                        value={requestDraft.bankName ?? ""}
-                        onChange={(event) => handleRequestField("bankName", event.target.value)}
-                        className={fieldClassName}
-                      />
-                    </label>
-                    <label>
-                      <span className={labelClassName}>Account number</span>
-                      <input
-                        value={requestDraft.accountNumber ?? ""}
-                        onChange={(event) => handleRequestField("accountNumber", event.target.value)}
-                        className={fieldClassName}
-                      />
-                    </label>
-                    <label className="md:col-span-2">
-                      <span className={labelClassName}>Account name</span>
-                      <input
-                        value={requestDraft.accountName ?? ""}
-                        onChange={(event) => handleRequestField("accountName", event.target.value)}
-                        className={fieldClassName}
-                      />
-                    </label>
-                    {renderRequestDetailsEditor()}
-                    <div className="md:col-span-2 rounded-[20px] border border-black/8 bg-[#fcfaf7] p-4">
-                      <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Payment proof</div>
-                      <div className="mt-2 text-sm text-neutral-700">
-                        {requestDraft.paymentProofName || "No proof attached"}
-                      </div>
-                      {requestDraft.paymentProofDataUrl && (
-                        <div className="mt-4 space-y-3">
-                          {requestDraft.paymentProofType.startsWith("image/") ? (
-                            <img
-                              src={requestDraft.paymentProofDataUrl}
-                              alt={requestDraft.paymentProofName || "Payment proof"}
-                              className="max-h-[240px] rounded-[16px] border border-black/8 object-contain"
-                            />
-                          ) : (
-                            <div className="rounded-[16px] border border-black/8 bg-white px-4 py-3 text-sm text-neutral-600">
-                              PDF receipt attached.
-                            </div>
-                          )}
-                          <a
-                            href={requestDraft.paymentProofDataUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex min-h-[42px] items-center justify-center rounded-[12px] border border-orange-200 bg-white px-4 text-sm font-medium text-ember"
-                          >
-                            Open proof
-                          </a>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mt-6 grid gap-3 lg:grid-cols-4">
-                    <button
-                      type="button"
-                      onClick={handleSaveRequest}
-                      className={actionSecondaryClassName}
-                    >
-                      Save request
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSendQuote}
-                      className={actionSecondaryClassName}
-                    >
-                      Save and send quote email
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleApproveRequest}
-                      className={actionPrimaryClassName}
-                    >
-                      Confirm payment and issue invoice + tracking
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleRejectRequest}
-                      className={actionDangerClassName}
-                    >
-                      Reject request
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div className="text-sm leading-6 text-neutral-600">Select a shipment request to review it.</div>
-              )}
-
-              {requestMessage && (
-                <div className="mt-5 rounded-[20px] border border-orange-200 bg-orange-50 px-4 py-3 text-sm leading-6 text-neutral-700">
-                  {requestMessage}
-                </div>
-              )}
-            </div>
           </div>
         </motion.section>
         )}
@@ -3104,7 +3089,7 @@ export function AdminPage() {
                             statusClasses(shipment.status)
                           ].join(" ")}
                         >
-                          {shipment.status}
+                          {formatShipmentStatusLabel(shipment.status)}
                         </span>
                       </div>
                       <div className="mt-3 text-sm text-neutral-700">
@@ -3222,7 +3207,7 @@ export function AdminPage() {
                       >
                         {shipmentStatuses.map((status) => (
                           <option key={status} value={status}>
-                            {status}
+                            {formatShipmentStatusLabel(status)}
                           </option>
                         ))}
                       </select>
@@ -3255,13 +3240,20 @@ export function AdminPage() {
 
                   {renderShipmentDetailsEditor()}
 
-                  <div className="mt-6 grid gap-3 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-center">
+                  <div className="mt-6 flex flex-wrap gap-3">
                     <button
                       type="button"
                       onClick={handleSaveShipment}
                       className={actionPrimaryClassName}
                     >
                       Save shipment changes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteShipment()}
+                      className={actionDangerClassName}
+                    >
+                      Delete shipment
                     </button>
                   </div>
                 </>
@@ -3288,16 +3280,16 @@ export function AdminPage() {
         >
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
-              <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Booking setup</div>
-              <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Manage locations, rates, and packaging</h2>
+              <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Booking and shipment setup</div>
+              <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Create shipments and manage locations, rates, and packaging</h2>
             </div>
             <div className="max-w-2xl text-sm leading-6 text-neutral-500">
-              Set the countries and cities you serve, the route rate cards you use internally, and the packaging types and package count presets available during booking.
+              Public booking is disabled, so this workspace now handles direct shipment creation as well as the locations, rates, and packaging presets used by the admin team.
             </div>
           </div>
 
           {renderShipmentSetupEditor()}
-          {renderContentActionBar()}
+          {["setup-locations", "setup-packaging"].includes(activeWorkspaceSection) ? renderContentActionBar() : null}
 
           {contentMessage && (
             <div className="mt-5 rounded-[20px] border border-orange-200 bg-orange-50 px-4 py-3 text-sm leading-6 text-neutral-700">
@@ -3320,7 +3312,7 @@ export function AdminPage() {
               <h2 className="mt-3 text-2xl font-semibold text-neutral-950">Edit landing page, customer pages, media, and copy</h2>
             </div>
             <div className="max-w-2xl text-sm leading-6 text-neutral-500">
-              Update website text and media here. Booking options live in the Booking tab, request pricing lives in the Request tab, and tracking updates live in the Tracking tab.
+              Update website text and media here. Booking options live in the Booking tab, and tracking updates live in the Tracking tab.
             </div>
           </div>
 

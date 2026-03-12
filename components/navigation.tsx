@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { GlowButton } from "@/components/buttons";
 import { LogoMark } from "@/components/logo-mark";
 import { useSiteContentStore } from "@/components/site-content-store";
 import { buildMailHref, buildWhatsAppHref } from "@/lib/contact-links";
@@ -21,6 +22,12 @@ const initialFormState: ContactForm = {
   message: ""
 };
 
+type NavigationProps = {
+  showContactButton?: boolean;
+  contactOpen?: boolean;
+  onContactOpenChange?: (open: boolean) => void;
+};
+
 function buildContactMessage(form: ContactForm) {
   return [
     "Hello Swift Signate,",
@@ -34,16 +41,33 @@ function buildContactMessage(form: ContactForm) {
   ].join("\n");
 }
 
-export function Navigation() {
-  const [contactOpen, setContactOpen] = useState(false);
+export function Navigation({ showContactButton = true, contactOpen, onContactOpenChange }: NavigationProps) {
+  const [internalContactOpen, setInternalContactOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState("");
   const [form, setForm] = useState<ContactForm>(initialFormState);
   const { content } = useSiteContentStore();
+  const isContactOpen = contactOpen ?? internalContactOpen;
+  const setContactOpen = (open: boolean) => {
+    if (contactOpen === undefined) {
+      setInternalContactOpen(open);
+    }
+
+    onContactOpenChange?.(open);
+  };
 
   useEffect(() => {
-    if (!contactOpen) {
+    if (!isContactOpen) {
+      return;
+    }
+
+    setSubmitted(false);
+    setSubmitMessage("");
+  }, [isContactOpen]);
+
+  useEffect(() => {
+    if (!isContactOpen) {
       return;
     }
 
@@ -61,7 +85,7 @@ export function Navigation() {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleEscape);
     };
-  }, [contactOpen]);
+  }, [isContactOpen]);
 
   const contactMessage = buildContactMessage(form);
   const whatsappHref = buildWhatsAppHref(content.navigation.whatsappHref, contactMessage);
@@ -112,24 +136,22 @@ export function Navigation() {
             <LogoMark tone="light" mediaSrc={content.navigation.logoMedia} presentation="bare" />
           </Link>
 
-          <div className="ml-auto flex items-center gap-2 sm:gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setSubmitted(false);
-                setSubmitMessage("");
-                setContactOpen(true);
-              }}
-              className="inline-flex h-11 items-center justify-center rounded-full border border-white/18 bg-white px-5 text-sm font-medium text-neutral-950 transition-colors hover:bg-orange-100"
-            >
-              {content.navigation.contactButtonLabel}
-            </button>
-          </div>
+          {showContactButton ? (
+            <div className="ml-auto flex items-center gap-2 sm:gap-3">
+              <GlowButton
+                onClick={() => setContactOpen(true)}
+                label={content.navigation.contactButtonLabel}
+                variant="ghost"
+                shape="parallelogram"
+                className="min-h-[44px] border-white/16 bg-white px-5 text-neutral-950 shadow-[0_10px_24px_rgba(0,0,0,0.18)] hover:border-orange-200 hover:text-ember"
+              />
+            </div>
+          ) : null}
         </div>
       </motion.header>
 
       <AnimatePresence>
-        {contactOpen && (
+        {isContactOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

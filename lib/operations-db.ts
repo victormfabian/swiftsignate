@@ -15,6 +15,7 @@ import {
   formatAirWaybill,
   formatCreatedAt,
   formatDeliveredAt,
+  formatShipmentStatusLabel,
   formatInvoiceNumber,
   formatPaymentRequestId,
   formatTrackingNumber,
@@ -30,7 +31,7 @@ import {
   type TransferRequestInput
 } from "@/lib/shipment-model";
 import { defaultSiteContent, mergeSiteContent, type SiteContent } from "@/lib/site-content-model";
-import { sendCustomerEmail } from "@/lib/customer-email";
+import { buildBrandedCustomerEmailHtml, sendCustomerEmail } from "@/lib/customer-email";
 import { getSiteUrl } from "@/lib/site-url";
 
 const DB_PATH = join(process.cwd(), "data", "swift-signate-operations.db");
@@ -159,6 +160,24 @@ function hasStoredRequestContacts(details: BookingRecordDetails | null | undefin
   return hasPartyContactDetails(details.sender) && hasPartyContactDetails(details.receiver, { requirePostalCode: true });
 }
 
+function resolveShipmentNotificationContact(input: {
+  customer: string;
+  customerEmail: string;
+  customerPhone: string;
+  details?: BookingRecordDetails | null;
+}) {
+  const receiver = input.details?.receiver;
+  const receiverName = receiver?.name.trim() ?? "";
+  const receiverEmail = receiver?.email.trim().toLowerCase() ?? "";
+  const receiverPhone = receiver?.phone.trim() ?? "";
+
+  return {
+    name: receiverName || input.customer.trim() || "Customer",
+    email: receiverEmail || input.customerEmail.trim().toLowerCase(),
+    phone: receiverPhone || input.customerPhone.trim()
+  };
+}
+
 function mergeQuoteForAdminUpdate(
   currentQuote: ShipmentQuote | null | undefined,
   nextQuote: Partial<ShipmentQuote> | null | undefined
@@ -260,75 +279,59 @@ function buildCustomerEmailHtml(input: {
 }) {
   const detailsMarkup =
     input.details && input.details.length > 0
-      ? `<div style="margin-top:24px;border-top:1px solid rgba(255,255,255,0.08);padding-top:20px;">${input.details
+      ? `<div style="margin-top:24px;border-top:1px solid #fed7aa;padding-top:20px;">${input.details
           .map(
             (detail) =>
-              `<div style="margin:0 0 10px;color:#e5e7eb;font-size:15px;line-height:1.7;">${escapeHtml(detail)}</div>`
+              `<div style="margin:0 0 10px;color:#374151;font-size:15px;line-height:1.7;">${escapeHtml(detail)}</div>`
           )
           .join("")}</div>`
       : "";
   const actionMarkup =
     input.actionLabel && input.actionHref
-      ? `<div style="margin-top:28px;"><a href="${escapeHtml(input.actionHref)}" style="display:inline-block;border-radius:999px;background:#2563eb;color:#fff;padding:14px 22px;text-decoration:none;font-weight:600;font-size:15px;">${escapeHtml(input.actionLabel)}</a></div>`
+      ? `<a href="${escapeHtml(input.actionHref)}" style="display:inline-block;border-radius:999px;background:#f97316;color:#111827;padding:14px 22px;text-decoration:none;font-weight:700;font-size:15px;">${escapeHtml(input.actionLabel)}</a>`
       : "";
 
-  return `
-    <div style="margin:0;padding:32px 16px;background:#0f1720;font-family:Segoe UI,Arial,sans-serif;">
-      <div style="max-width:620px;margin:0 auto;overflow:hidden;border-radius:28px;border:1px solid rgba(251,146,60,0.28);background:#111827;">
-        <div style="padding:28px 32px;background:linear-gradient(135deg,#132238 0%,#0f1720 100%);border-bottom:1px solid rgba(255,255,255,0.06);">
-          <div style="font-size:24px;font-weight:700;letter-spacing:0.02em;color:#f8fafc;">Swift Signate</div>
-        </div>
-        <div style="padding:32px;">
-          <div style="color:#f8fafc;font-size:32px;font-weight:700;line-height:1.2;">${escapeHtml(input.title)}</div>
-          <div style="margin-top:18px;color:#d1d5db;font-size:16px;line-height:1.8;">${escapeHtml(input.message)}</div>
-          ${detailsMarkup}
-          ${actionMarkup}
-        </div>
-      </div>
-    </div>
-  `;
+  return buildBrandedCustomerEmailHtml({
+    title: input.title,
+    contentHtml: `
+      <div style="color:#374151;font-size:16px;line-height:1.8;">${escapeHtml(input.message)}</div>
+      ${detailsMarkup}
+    `,
+    actionHtml: actionMarkup
+  });
 }
 
-function buildShipmentUpdateEmailHtml(shipment: Shipment, title: string) {
+function buildShipmentUpdateEmailHtml(shipment: Shipment, title: string, recipientName?: string) {
   const trackingUrl = `${getSiteUrl()}/dashboard/track?ref=${encodeURIComponent(shipment.ref)}`;
   const clearanceBlock =
     typeof shipment.clearanceFee === "number"
-      ? `<div style="margin-top:22px;color:#d1d5db;font-size:16px;line-height:1.8;">
-          Your clearance fee is <strong style="color:#f8fafc;">${escapeHtml(formatMoney(shipment.clearanceFee))}</strong>.
+      ? `<div style="margin-top:22px;color:#374151;font-size:16px;line-height:1.8;">
+          Your clearance fee is <strong style="color:#111827;">${escapeHtml(formatMoney(shipment.clearanceFee))}</strong>.
           This amount was updated by the Swift Signate admin for this shipment.
         </div>`
       : "";
 
-  return `
-    <div style="margin:0;padding:32px 16px;background:#0f1720;font-family:Segoe UI,Arial,sans-serif;">
-      <div style="max-width:620px;margin:0 auto;overflow:hidden;border-radius:28px;border:1px solid rgba(251,146,60,0.28);background:#111827;">
-        <div style="padding:28px 32px;background:linear-gradient(135deg,#132238 0%,#0f1720 100%);border-bottom:1px solid rgba(255,255,255,0.06);">
-          <div style="font-size:24px;font-weight:700;letter-spacing:0.02em;color:#f8fafc;">Swift Signate</div>
-        </div>
-        <div style="padding:32px;">
-          <div style="color:#f8fafc;font-size:30px;font-weight:700;line-height:1.2;">${escapeHtml(title)}</div>
-          <div style="margin-top:24px;color:#d1d5db;font-size:16px;line-height:1.8;">
-            Dear ${escapeHtml(shipment.customer || "Customer")},
-          </div>
-          <div style="margin-top:18px;color:#d1d5db;font-size:16px;line-height:1.8;">
-            ${escapeHtml(shipment.lastUpdate)}
-          </div>
-          <div style="margin-top:28px;border-top:1px solid rgba(255,255,255,0.08);padding-top:22px;">
-            <div style="margin:0 0 10px;color:#e5e7eb;font-size:15px;line-height:1.7;"><strong style="color:#f8fafc;">Tracking number:</strong> ${escapeHtml(shipment.ref)}</div>
-            <div style="margin:0 0 10px;color:#e5e7eb;font-size:15px;line-height:1.7;"><strong style="color:#f8fafc;">Air waybill:</strong> ${escapeHtml(shipment.airWaybill)}</div>
-            <div style="margin:0 0 10px;color:#e5e7eb;font-size:15px;line-height:1.7;"><strong style="color:#f8fafc;">Route:</strong> ${escapeHtml(`${shipment.origin} to ${shipment.destination}`)}</div>
-            <div style="margin:0 0 10px;color:#e5e7eb;font-size:15px;line-height:1.7;"><strong style="color:#f8fafc;">Item status summary:</strong> ${escapeHtml(shipment.status)}</div>
-            <div style="margin:0 0 10px;color:#e5e7eb;font-size:15px;line-height:1.7;"><strong style="color:#f8fafc;">Package details:</strong> ${escapeHtml(shipment.packageType)}</div>
-            <div style="margin:0;color:#e5e7eb;font-size:15px;line-height:1.7;"><strong style="color:#f8fafc;">Delivery timeline:</strong> ${escapeHtml(shipment.eta)}</div>
-          </div>
-          <div style="margin-top:28px;">
-            <a href="${escapeHtml(trackingUrl)}" style="display:inline-block;border-radius:999px;background:#2563eb;color:#fff;padding:14px 22px;text-decoration:none;font-weight:600;font-size:15px;">Track your shipment here</a>
-          </div>
-          ${clearanceBlock}
-        </div>
+  return buildBrandedCustomerEmailHtml({
+    title,
+    contentHtml: `
+      <div style="color:#374151;font-size:16px;line-height:1.8;">
+        Dear ${escapeHtml(recipientName || shipment.customer || "Customer")},
       </div>
-    </div>
-  `;
+      <div style="margin-top:18px;color:#374151;font-size:16px;line-height:1.8;">
+        ${escapeHtml(shipment.lastUpdate)}
+      </div>
+      <div style="margin-top:28px;border-top:1px solid #fed7aa;padding-top:22px;">
+        <div style="margin:0 0 10px;color:#374151;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Tracking number:</strong> ${escapeHtml(shipment.ref)}</div>
+        <div style="margin:0 0 10px;color:#374151;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Air waybill:</strong> ${escapeHtml(shipment.airWaybill)}</div>
+        <div style="margin:0 0 10px;color:#374151;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Route:</strong> ${escapeHtml(`${shipment.origin} to ${shipment.destination}`)}</div>
+        <div style="margin:0 0 10px;color:#374151;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Item status summary:</strong> ${escapeHtml(formatShipmentStatusLabel(shipment.status))}</div>
+        <div style="margin:0 0 10px;color:#374151;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Package details:</strong> ${escapeHtml(shipment.packageType)}</div>
+        <div style="margin:0;color:#374151;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Delivery timeline:</strong> ${escapeHtml(shipment.eta)}</div>
+      </div>
+      ${clearanceBlock}
+    `,
+    actionHtml: `<a href="${escapeHtml(trackingUrl)}" style="display:inline-block;border-radius:999px;background:#f97316;color:#111827;padding:14px 22px;text-decoration:none;font-weight:700;font-size:15px;">Track your shipment here</a>`
+  });
 }
 
 function ensureSqliteColumn(db: SqliteDatabase, table: string, column: string, definition: string) {
@@ -336,6 +339,53 @@ function ensureSqliteColumn(db: SqliteDatabase, table: string, column: string, d
 
   if (!columns.some((current) => current.name === column)) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+function cleanupLegacySqliteShipments(db: SqliteDatabase) {
+  const unlinkPaymentRequest = db.prepare(
+    "UPDATE payment_requests SET shipmentRef = NULL, airWaybill = NULL WHERE shipmentRef = ? OR airWaybill = ?"
+  );
+  const deleteShipment = db.prepare(`
+    DELETE FROM shipments
+    WHERE airWaybill = ?
+      AND customerEmail = ?
+      AND customerPhone = ?
+      AND createdAt = ?
+  `);
+
+  for (const shipment of seedShipments) {
+    unlinkPaymentRequest.run(shipment.ref, shipment.airWaybill);
+    deleteShipment.run(
+      shipment.airWaybill,
+      shipment.customerEmail,
+      shipment.customerPhone,
+      shipment.createdAt
+    );
+  }
+}
+
+async function cleanupLegacyPostgresShipments() {
+  const pool = getPostgresPool();
+
+  for (const shipment of seedShipments) {
+    await pool.query(
+      'UPDATE payment_requests SET "shipmentRef" = NULL, "airWaybill" = NULL WHERE "shipmentRef" = $1 OR "airWaybill" = $2',
+      [shipment.ref, shipment.airWaybill]
+    );
+    await pool.query(
+      `DELETE FROM shipments
+       WHERE "airWaybill" = $1
+         AND "customerEmail" = $2
+         AND "customerPhone" = $3
+         AND "createdAt" = $4`,
+      [
+        shipment.airWaybill,
+        shipment.customerEmail,
+        shipment.customerPhone,
+        shipment.createdAt
+      ]
+    );
   }
 }
 
@@ -538,34 +588,7 @@ async function ensurePostgresSchema() {
 }
 
 function seedSqliteDatabase(db: SqliteDatabase) {
-  const shipmentCount = db.prepare("SELECT COUNT(*) as count FROM shipments").get() as { count: number };
-  if (shipmentCount.count === 0) {
-    const insertShipment = db.prepare(`
-      INSERT INTO shipments (
-        ref, airWaybill, customer, customerEmail, customerPhone, origin, destination, eta,
-        status, packageType, paymentMethod, clearanceFee, lastUpdate, createdAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    for (const shipment of seedShipments) {
-      insertShipment.run(
-        shipment.ref,
-        shipment.airWaybill,
-        shipment.customer,
-        shipment.customerEmail,
-        shipment.customerPhone,
-        shipment.origin,
-        shipment.destination,
-        shipment.eta,
-        shipment.status,
-        shipment.packageType,
-        shipment.paymentMethod,
-        shipment.clearanceFee ?? null,
-        shipment.lastUpdate,
-        shipment.createdAt
-      );
-    }
-  }
+  cleanupLegacySqliteShipments(db);
 
   const siteContentRow = db.prepare("SELECT id FROM site_content WHERE id = 'default' LIMIT 1").get() as
     | { id: string }
@@ -582,34 +605,7 @@ function seedSqliteDatabase(db: SqliteDatabase) {
 
 async function seedPostgresDatabase() {
   const pool = getPostgresPool();
-  const shipmentCountResult = await pool.query<{ count: string }>("SELECT COUNT(*) as count FROM shipments");
-
-  if (Number(shipmentCountResult.rows[0]?.count ?? 0) === 0) {
-    for (const shipment of seedShipments) {
-      await pool.query(
-        `INSERT INTO shipments (
-          ref, "airWaybill", customer, "customerEmail", "customerPhone", origin, destination, eta,
-          status, "packageType", "paymentMethod", "clearanceFee", "lastUpdate", "createdAt"
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-        [
-          shipment.ref,
-          shipment.airWaybill,
-          shipment.customer,
-          shipment.customerEmail,
-          shipment.customerPhone,
-          shipment.origin,
-          shipment.destination,
-          shipment.eta,
-          shipment.status,
-          shipment.packageType,
-          shipment.paymentMethod,
-          shipment.clearanceFee ?? null,
-          shipment.lastUpdate,
-          shipment.createdAt
-        ]
-      );
-    }
-  }
+  await cleanupLegacyPostgresShipments();
 
   const contentResult = await pool.query<{ id: string }>('SELECT id FROM site_content WHERE id = $1 LIMIT 1', ["default"]);
 
@@ -825,20 +821,27 @@ async function insertContactRequest(input: ContactRequestInput) {
 
 async function insertShipment(input: BookingInput) {
   const sequence = await nextShipmentSequence();
+  const trimmedCustomer = input.customer.trim();
+  const trimmedCustomerEmail = input.customerEmail.trim().toLowerCase();
+  const trimmedCustomerPhone = input.customerPhone.trim();
+  const trimmedOrigin = input.origin.trim();
+  const trimmedDestination = input.destination.trim();
+  const trimmedEta = input.eta.trim();
+  const trimmedPackageType = input.packageType.trim();
   const shipment: Shipment = {
     ref: formatTrackingNumber(sequence),
     airWaybill: formatAirWaybill(sequence),
-    customer: input.customer,
-    customerEmail: input.customerEmail,
-    customerPhone: input.customerPhone,
-    origin: input.origin,
-    destination: input.destination,
-    eta: input.eta,
+    customer: trimmedCustomer,
+    customerEmail: trimmedCustomerEmail,
+    customerPhone: trimmedCustomerPhone,
+    origin: trimmedOrigin,
+    destination: trimmedDestination,
+    eta: trimmedEta,
     status: "Booked",
-    packageType: input.packageType,
+    packageType: trimmedPackageType,
     paymentMethod: input.paymentMethod,
     clearanceFee: undefined,
-    lastUpdate: buildLastUpdate("Booked", input),
+    lastUpdate: buildLastUpdate("Booked", { origin: trimmedOrigin, destination: trimmedDestination }),
     createdAt: formatCreatedAt(),
     details: input.details ?? null
   };
@@ -947,17 +950,28 @@ export async function getShipmentByTrackingReference(reference: string) {
 
 export async function bookShipmentRecord(input: BookingInput) {
   const shipment = await insertShipment(input);
+  const notificationRecipient = resolveShipmentNotificationContact({
+    customer: input.customer,
+    customerEmail: input.customerEmail,
+    customerPhone: input.customerPhone,
+    details: input.details ?? null
+  });
+  const title = `Tracking details for shipment ${shipment.ref}`;
 
   await notifyCustomer({
-    customerEmail: input.customerEmail,
-    title: "Payment confirmed",
-    message: `Your payment has been confirmed. Tracking number ${shipment.ref} is now ready.`,
+    customerEmail: notificationRecipient.email,
+    title,
+    message: "Your shipment is now active. Use the tracking details below to follow status updates.",
     details: [
       `Tracking number: ${shipment.ref}`,
+      `Air waybill: ${shipment.airWaybill}`,
       `Route: ${shipment.origin} to ${shipment.destination}`,
       `Estimated delivery: ${shipment.eta}`,
       `Payment method: ${shipment.paymentMethod}`
-    ]
+    ],
+    html: buildShipmentUpdateEmailHtml(shipment, title, notificationRecipient.name),
+    actionLabel: "Track your shipment here",
+    actionHref: `${getSiteUrl()}/dashboard/track?ref=${encodeURIComponent(shipment.ref)}`
   });
 
   return shipment;
@@ -1090,6 +1104,13 @@ export async function approvePaymentRequestRecord(requestId: string) {
     return null;
   }
 
+  const notificationRecipient = resolveShipmentNotificationContact({
+    customer: request.customer,
+    customerEmail: request.customerEmail,
+    customerPhone: request.customerPhone,
+    details: request.details ?? null
+  });
+
   const shipment = await insertShipment({
     customer: request.customer,
     customerEmail: request.customerEmail,
@@ -1130,25 +1151,22 @@ export async function approvePaymentRequestRecord(requestId: string) {
       requestId
     );
   }
-
-  const amountText = Number(request.amount).toLocaleString("en-NG", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
+  const title = `Tracking details for shipment ${shipment.ref}`;
 
   await notifyCustomer({
-    customerEmail: request.customerEmail,
-    title: "Payment confirmed",
-    message: `Your payment has been confirmed. Invoice ${invoiceNumber} and tracking number ${shipment.ref} are now available.`,
+    customerEmail: notificationRecipient.email,
+    title,
+    message: "Your shipment is now active. Use the tracking details below to follow delivery updates.",
     details: [
-      `Invoice number: ${invoiceNumber}`,
       `Tracking number: ${shipment.ref}`,
       `Air waybill: ${shipment.airWaybill}`,
       `Service: ${request.serviceTitle}`,
       `Route: ${shipment.origin} to ${shipment.destination}`,
-      `Estimated delivery: ${shipment.eta}`,
-      `Amount received: NGN ${amountText}`
-    ]
+      `Estimated delivery: ${shipment.eta}`
+    ],
+    html: buildShipmentUpdateEmailHtml(shipment, title, notificationRecipient.name),
+    actionLabel: "Track your shipment here",
+    actionHref: `${getSiteUrl()}/dashboard/track?ref=${encodeURIComponent(shipment.ref)}`
   });
 
   return shipment;
@@ -1520,8 +1538,14 @@ export async function updateShipmentRecordByRef(ref: string, updates: Partial<Sh
     }
   }
 
+  const notificationRecipient = resolveShipmentNotificationContact({
+    customer: next.customer,
+    customerEmail: next.customerEmail,
+    customerPhone: next.customerPhone,
+    details: next.details ?? null
+  });
   const shouldNotifyCustomer =
-    Boolean(next.customerEmail.trim()) &&
+    Boolean(notificationRecipient.email.trim()) &&
     (next.ref !== current.ref ||
       next.status !== current.status ||
       next.origin !== current.origin ||
@@ -1534,11 +1558,11 @@ export async function updateShipmentRecordByRef(ref: string, updates: Partial<Sh
   if (shouldNotifyCustomer) {
     const title =
       next.status !== current.status
-        ? `Shipment ${next.ref} is now ${next.status}`
+        ? `Shipment ${next.ref} is now ${formatShipmentStatusLabel(next.status)}`
         : `Shipment ${next.ref} was updated`;
 
     await notifyCustomer({
-      customerEmail: next.customerEmail,
+      customerEmail: notificationRecipient.email,
       title,
       message: next.lastUpdate,
       details: [
@@ -1548,13 +1572,36 @@ export async function updateShipmentRecordByRef(ref: string, updates: Partial<Sh
         `Package details: ${next.packageType}`,
         ...(typeof next.clearanceFee === "number" ? [`Clearance fee: ${formatMoney(next.clearanceFee)}`] : [])
       ],
-      html: buildShipmentUpdateEmailHtml(next, title),
+      html: buildShipmentUpdateEmailHtml(next, title, notificationRecipient.name),
       actionLabel: "Track your shipment here",
       actionHref: `${getSiteUrl()}/dashboard/track?ref=${encodeURIComponent(next.ref)}`
     });
   }
 
   return next;
+}
+
+export async function deleteShipmentRecordByRef(ref: string) {
+  const shipments = await listShipments();
+  const current = shipments.find((item) => item.ref === ref);
+
+  if (!current) {
+    return null;
+  }
+
+  if (isSupabaseConfigured()) {
+    await ensurePostgresSchema();
+    const pool = getPostgresPool();
+    await pool.query('UPDATE payment_requests SET "shipmentRef" = NULL, "airWaybill" = NULL WHERE "shipmentRef" = $1', [ref]);
+    await pool.query("DELETE FROM shipments WHERE ref = $1", [ref]);
+    return current;
+  }
+
+  const db = getSqliteDatabase();
+  db.prepare("UPDATE payment_requests SET shipmentRef = NULL, airWaybill = NULL WHERE shipmentRef = ?").run(ref);
+  db.prepare("DELETE FROM shipments WHERE ref = ?").run(ref);
+
+  return current;
 }
 
 export async function markCustomerUpdateReadRecord(updateId: string, customerEmail?: string) {

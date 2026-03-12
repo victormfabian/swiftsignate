@@ -12,7 +12,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { getShipmentSteps, useShipmentStore, type Shipment } from "@/components/shipment-store";
 import { useSiteContentStore } from "@/components/site-content-store";
 import { defaultBookingConfig } from "@/lib/site-content-model";
-import { normalizeTrackingNumber, type BookingRecordDetails } from "@/lib/shipment-model";
+import { formatShipmentStatusLabel, normalizeTrackingNumber, type BookingRecordDetails } from "@/lib/shipment-model";
 
 type DashboardTab = "book" | "track";
 type BookingStep = 1 | 2 | 3;
@@ -505,6 +505,7 @@ export function DashboardPage({
   );
   const visiblePaymentRequests = [...paymentRequests].sort((left, right) => right.id.localeCompare(left.id));
   const requiresPartnerSetup = Boolean(currentUser && (currentUser.mustChangePassword || !currentUser.phone.trim()));
+  const showCustomerWorkspace = !isLockedToSingleTab && isUserAuthenticated;
   const bookingStepLabels = [
     { step: 1 as BookingStep, label: content.customerPages.stepLabels.route },
     { step: 2 as BookingStep, label: content.customerPages.stepLabels.shipment },
@@ -1214,14 +1215,14 @@ export function DashboardPage({
 
   if (!isUserAuthenticated && requiresUserAuth) {
     return (
-      <AuthPanel
-        role="user"
-        mode={isModal ? "modal" : "page"}
-        title="Partner log in"
-        nextPath="/dashboard/book"
-        onSuccess={() => {
-          void refreshSession();
-        }}
+        <AuthPanel
+          role="user"
+          mode={isModal ? "modal" : "page"}
+          title="Partner log in"
+          nextPath="/dashboard/track"
+          onSuccess={() => {
+            void refreshSession();
+          }}
         onClose={isModal ? onClose : undefined}
       />
     );
@@ -2054,7 +2055,7 @@ export function DashboardPage({
                   statusClasses(trackingResult.status)
                 ].join(" ")}
               >
-                {trackingResult.status}
+                {formatShipmentStatusLabel(trackingResult.status)}
               </span>
             </div>
 
@@ -2078,9 +2079,9 @@ export function DashboardPage({
 
             <div className="mt-6 grid gap-3 md:grid-cols-5">
               {shipmentSteps.map((step, index) => (
-                <div key={step} className="flex items-center gap-3 rounded-[18px] bg-[#fcfaf7] p-4">
+                <div key={step} className="flex items-center justify-between gap-3 rounded-[18px] bg-[#fcfaf7] p-4">
+                  <div className="flex-1 text-sm font-medium text-neutral-700">{formatShipmentStatusLabel(step)}</div>
                   <TrackingStatusMarker complete={index <= activeStepIndex} />
-                  <div className="text-sm font-medium text-neutral-700">{step}</div>
                 </div>
               ))}
             </div>
@@ -2123,7 +2124,7 @@ export function DashboardPage({
                   statusClasses(shipment.status)
                 ].join(" ")}
               >
-                {shipment.status}
+                {formatShipmentStatusLabel(shipment.status)}
               </span>
             </div>
             <div className="mt-3 text-sm text-neutral-700">{shipment.customer}</div>
@@ -2258,7 +2259,7 @@ export function DashboardPage({
                 <span className="text-sm font-medium text-neutral-700">Swift Signate</span>
               </Link>
               <div className="flex flex-wrap items-center justify-end gap-2">
-                {isUserAuthenticated ? (
+                {!isLockedToSingleTab && isUserAuthenticated ? (
                   <>
                     <div className="rounded-full bg-[#fcfaf7] px-4 py-2 text-xs uppercase tracking-[0.16em] text-neutral-600">
                       {currentUser?.name}
@@ -2274,14 +2275,14 @@ export function DashboardPage({
                       Sign Out
                     </button>
                   </>
-                ) : (
+                ) : !isLockedToSingleTab ? (
                   <Link
-                    href="/auth?next=%2Fdashboard%2Fbook"
+                    href="/auth?next=%2Fdashboard%2Ftrack"
                     className="rounded-full bg-[#fcfaf7] px-4 py-2 text-sm text-neutral-700 transition-colors hover:text-neutral-950"
                   >
                     Log In
                   </Link>
-                )}
+                ) : null}
                 <Link
                   href="/"
                   className="rounded-full bg-[#fcfaf7] px-4 py-2 text-sm text-neutral-700 transition-colors hover:text-neutral-950"
@@ -2358,8 +2359,8 @@ export function DashboardPage({
           </header>
         )}
 
-        {!isModal && isUserAuthenticated && renderRecentShipmentsSection()}
-        {!isModal && isUserAuthenticated && renderShipmentRequestsSection()}
+        {!isModal && showCustomerWorkspace && renderRecentShipmentsSection()}
+        {!isModal && showCustomerWorkspace && renderShipmentRequestsSection()}
 
         <section
           className={
@@ -2405,7 +2406,7 @@ export function DashboardPage({
             </div>
           )}
 
-          {visibleCustomerUpdates.length > 0 && (
+          {showCustomerWorkspace && visibleCustomerUpdates.length > 0 && (
             <div className={`${notice ? "mt-4" : isModal ? "mt-4" : "mt-5"} space-y-3`}>
               {visibleCustomerUpdates.map((update) => (
                 <div

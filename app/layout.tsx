@@ -13,6 +13,11 @@ export const metadata: Metadata = {
   title: "Swift Signate",
   description: "Futuristic logistics command platform for bookings, tracking, and fleet operations.",
   metadataBase: new URL(siteUrl),
+  icons: {
+    icon: "/api/content/logo",
+    shortcut: "/api/content/logo",
+    apple: "/api/content/logo"
+  },
   robots: {
     index: true,
     follow: true,

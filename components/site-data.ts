@@ -103,7 +103,7 @@ export const trackingRecords = [
     status: "In transit",
     eta: "Today, 4:20 PM",
     lastUpdate: "Shipment departed regional hub at 10:15 AM.",
-    checkpoints: ["Booked", "Picked up", "At regional hub", "In transit", "Out for delivery"]
+    checkpoints: ["Booked", "Shipment received", "At regional hub", "In transit", "Out for delivery"]
   },
   {
     ref: "SS20488",
@@ -121,7 +121,7 @@ export const trackingRecords = [
     status: "Delivered",
     eta: "Delivered at 8:40 AM",
     lastUpdate: "Delivery completed and received by customer.",
-    checkpoints: ["Booked", "Picked up", "In transit", "Out for delivery", "Delivered"]
+    checkpoints: ["Booked", "Shipment received", "In transit", "Out for delivery", "Delivered"]
   }
 ];
 

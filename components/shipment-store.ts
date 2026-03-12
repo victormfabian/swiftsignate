@@ -99,10 +99,10 @@ export function useShipmentStore() {
         },
         body: JSON.stringify(input)
       });
-      const result = await readJson<{ ok: boolean; shipment: Shipment }>(response);
+      const result = await readJson<{ ok: boolean; shipment?: Shipment; message?: string }>(response);
 
-      if (!response.ok || !result.ok) {
-        throw new Error("Could not create shipment.");
+      if (!response.ok || !result.ok || !result.shipment) {
+        throw new Error(result.message ?? "Could not create shipment.");
       }
 
       await refreshStore();
@@ -270,6 +270,23 @@ export function useShipmentStore() {
     [refreshStore]
   );
 
+  const deleteShipment = useCallback(
+    async (ref: string) => {
+      const response = await fetch(`/api/operations/shipment/${encodeURIComponent(ref)}`, {
+        method: "DELETE"
+      });
+      const result = await readJson<{ ok: boolean; shipment?: Shipment; message?: string }>(response);
+
+      if (!response.ok || !result.ok || !result.shipment) {
+        throw new Error(result.message ?? "Could not delete shipment.");
+      }
+
+      await refreshStore();
+      return result.shipment;
+    },
+    [refreshStore]
+  );
+
   const updatePaymentRequest = useCallback(
     async (requestId: string, updates: Partial<PaymentRequest>) => {
       const response = await fetch(`/api/operations/payment-request/${encodeURIComponent(requestId)}`, {
@@ -413,6 +430,7 @@ export function useShipmentStore() {
     rejectPaymentRequest,
     updateShipmentStatus,
     updateShipmentRecord,
+    deleteShipment,
     updatePaymentRequest,
     updateContactRequest,
     lookupShipment,

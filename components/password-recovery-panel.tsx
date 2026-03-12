@@ -34,7 +34,7 @@ export function PasswordRecoveryPanel(props: PasswordRecoveryPanelProps) {
     confirmPassword: ""
   });
 
-  const nextPath = props.nextPath && props.nextPath.startsWith("/") && !props.nextPath.startsWith("//") ? props.nextPath : "/dashboard/book";
+  const nextPath = props.nextPath && props.nextPath.startsWith("/") && !props.nextPath.startsWith("//") ? props.nextPath : "/dashboard/track";
 
   const handleForgotPassword = () => {
     void (async () => {

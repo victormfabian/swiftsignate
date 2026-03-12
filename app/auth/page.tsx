@@ -10,5 +10,5 @@ type AuthRouteProps = {
 export default async function AuthRoute({ searchParams }: AuthRouteProps) {
   const params = await searchParams;
 
-  return <AuthPanel role="user" mode="page" nextPath={params.next || "/dashboard/book"} initialNotice={params.error || ""} />;
+  return <AuthPanel role="user" mode="page" nextPath={params.next || "/dashboard/track"} initialNotice={params.error || ""} />;
 }
