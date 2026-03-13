@@ -177,6 +177,59 @@ a {
   transform: skewX(14deg);
 }
 
+.button-shimmer {
+  position: absolute;
+  inset: -24% auto -24% -52%;
+  z-index: 0;
+  width: 42%;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: buttonShimmerSlide 4.2s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.button-shimmer--primary {
+  background: linear-gradient(
+    115deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 18%,
+    rgba(255, 255, 255, 0.42) 48%,
+    rgba(255, 255, 255, 0.12) 72%,
+    transparent 100%
+  );
+}
+
+.button-shimmer--ghost {
+  background: linear-gradient(
+    115deg,
+    transparent 0%,
+    rgba(249, 115, 22, 0.02) 18%,
+    rgba(249, 115, 22, 0.24) 48%,
+    rgba(249, 115, 22, 0.08) 72%,
+    transparent 100%
+  );
+}
+
+.media-shimmer {
+  position: absolute;
+  inset: -12% auto -12% -40%;
+  z-index: 2;
+  width: 34%;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    112deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.08) 24%,
+    rgba(255, 255, 255, 0.34) 48%,
+    rgba(255, 255, 255, 0.12) 72%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  mix-blend-mode: screen;
+  animation: mediaShimmerSlide 5.4s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
 .discover-signal {
   text-shadow: 0 2px 16px rgba(0, 0, 0, 0.28);
 }
@@ -230,6 +283,25 @@ a {
   }
 }
 
+@keyframes buttonShimmerSlide {
+  0%,
+  18% {
+    transform: translateX(-190%) skewX(-18deg);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.42;
+  }
+  58% {
+    opacity: 0.72;
+  }
+  78%,
+  100% {
+    transform: translateX(360%) skewX(-18deg);
+    opacity: 0;
+  }
+}
+
 @keyframes pulse {
   0%,
   100% {
@@ -239,6 +311,25 @@ a {
   50% {
     opacity: 1;
     transform: scale(1.08);
+  }
+}
+
+@keyframes mediaShimmerSlide {
+  0%,
+  16% {
+    transform: translateX(-170%) skewX(-18deg);
+    opacity: 0;
+  }
+  28% {
+    opacity: 0.32;
+  }
+  55% {
+    opacity: 0.66;
+  }
+  82%,
+  100% {
+    transform: translateX(360%) skewX(-18deg);
+    opacity: 0;
   }
 }
 

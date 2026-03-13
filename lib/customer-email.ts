@@ -34,21 +34,47 @@ export function buildBrandedCustomerEmailHtml(input: BrandedCustomerEmailHtmlInp
   const logoUrl = `${getSiteUrl()}/api/content/logo`;
 
   return `
-    <div style="margin:0;padding:32px 16px;background:#fff7ed;font-family:Segoe UI,Arial,sans-serif;">
-      <div style="max-width:620px;margin:0 auto;overflow:hidden;border-radius:28px;border:1px solid #fdba74;background:#ffffff;">
-        <div style="padding:26px 32px;background:#f97316;border-bottom:1px solid #fdba74;">
-          <div style="display:flex;align-items:center;gap:14px;">
-            <img src="${logoUrl}" alt="Swift Signate logo" width="48" height="48" style="display:block;height:48px;width:48px;border-radius:14px;" />
-            <div style="font-size:24px;font-weight:700;letter-spacing:0.02em;color:#111827;">Swift Signate</div>
-          </div>
-        </div>
-        <div style="padding:32px;background:#ffffff;">
-          <div style="color:#111827;font-size:30px;font-weight:700;line-height:1.2;">${escapeHtml(input.title)}</div>
-          <div style="margin-top:18px;">${input.contentHtml}</div>
-          ${actionMarkup}
-        </div>
-      </div>
-    </div>
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="color-scheme" content="light only" />
+        <meta name="supported-color-schemes" content="light only" />
+        <title>${escapeHtml(input.title)}</title>
+      </head>
+      <body style="margin:0;padding:0;background-color:#fff7ed;color:#111827;font-family:Segoe UI,Arial,sans-serif;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#fff7ed" style="width:100%;border-collapse:collapse;background-color:#fff7ed;">
+          <tr>
+            <td align="center" style="padding:32px 16px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#ffffff" style="width:100%;max-width:620px;border-collapse:separate;border-spacing:0;background-color:#ffffff;border:1px solid #fdba74;border-radius:28px;overflow:hidden;">
+                <tr>
+                  <td bgcolor="#f97316" style="padding:24px 32px;background-color:#f97316;border-bottom:1px solid #fdba74;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+                      <tr>
+                        <td valign="middle" style="width:48px;vertical-align:middle;">
+                          <img src="${logoUrl}" alt="Swift Signate logo" width="48" height="48" style="display:block;width:48px;height:48px;border-radius:14px;border:0;outline:none;text-decoration:none;" />
+                        </td>
+                        <td valign="middle" style="padding-left:14px;vertical-align:middle;">
+                          <div style="margin:0;color:#111827;font-size:24px;font-weight:700;letter-spacing:0.02em;line-height:1.1;">Swift Signate</div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td bgcolor="#ffffff" style="padding:32px;background-color:#ffffff;color:#111827;">
+                    <div style="margin:0;color:#111827;font-size:30px;font-weight:700;line-height:1.2;">${escapeHtml(input.title)}</div>
+                    <div style="margin-top:18px;background-color:#ffffff;color:#111827;">${input.contentHtml}</div>
+                    ${actionMarkup}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
   `;
 }
 
@@ -61,7 +87,7 @@ function buildDefaultCustomerEmailHtml(input: CustomerEmailInput) {
   const contentHtml = paragraphs
     .map((paragraph) => {
       const paragraphHtml = escapeHtml(paragraph).replaceAll(/\r?\n/g, "<br />");
-      return `<div style="margin:0 0 16px;color:#374151;font-size:16px;line-height:1.8;">${paragraphHtml}</div>`;
+      return `<div style="margin:0 0 16px;color:#111827;font-size:16px;line-height:1.8;">${paragraphHtml}</div>`;
     })
     .join("");
 

@@ -282,7 +282,7 @@ function buildCustomerEmailHtml(input: {
       ? `<div style="margin-top:24px;border-top:1px solid #fed7aa;padding-top:20px;">${input.details
           .map(
             (detail) =>
-              `<div style="margin:0 0 10px;color:#374151;font-size:15px;line-height:1.7;">${escapeHtml(detail)}</div>`
+              `<div style="margin:0 0 10px;color:#111827;font-size:15px;line-height:1.7;">${escapeHtml(detail)}</div>`
           )
           .join("")}</div>`
       : "";
@@ -294,7 +294,7 @@ function buildCustomerEmailHtml(input: {
   return buildBrandedCustomerEmailHtml({
     title: input.title,
     contentHtml: `
-      <div style="color:#374151;font-size:16px;line-height:1.8;">${escapeHtml(input.message)}</div>
+      <div style="color:#111827;font-size:16px;line-height:1.8;">${escapeHtml(input.message)}</div>
       ${detailsMarkup}
     `,
     actionHtml: actionMarkup
@@ -305,7 +305,7 @@ function buildShipmentUpdateEmailHtml(shipment: Shipment, title: string, recipie
   const trackingUrl = `${getSiteUrl()}/dashboard/track?ref=${encodeURIComponent(shipment.ref)}`;
   const clearanceBlock =
     typeof shipment.clearanceFee === "number"
-      ? `<div style="margin-top:22px;color:#374151;font-size:16px;line-height:1.8;">
+      ? `<div style="margin-top:22px;color:#111827;font-size:16px;line-height:1.8;">
           Your clearance fee is <strong style="color:#111827;">${escapeHtml(formatMoney(shipment.clearanceFee))}</strong>.
           This amount was updated by the Swift Signate admin for this shipment.
         </div>`
@@ -314,19 +314,19 @@ function buildShipmentUpdateEmailHtml(shipment: Shipment, title: string, recipie
   return buildBrandedCustomerEmailHtml({
     title,
     contentHtml: `
-      <div style="color:#374151;font-size:16px;line-height:1.8;">
+      <div style="color:#111827;font-size:16px;line-height:1.8;">
         Dear ${escapeHtml(recipientName || shipment.customer || "Customer")},
       </div>
-      <div style="margin-top:18px;color:#374151;font-size:16px;line-height:1.8;">
+      <div style="margin-top:18px;color:#111827;font-size:16px;line-height:1.8;">
         ${escapeHtml(shipment.lastUpdate)}
       </div>
       <div style="margin-top:28px;border-top:1px solid #fed7aa;padding-top:22px;">
-        <div style="margin:0 0 10px;color:#374151;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Tracking number:</strong> ${escapeHtml(shipment.ref)}</div>
-        <div style="margin:0 0 10px;color:#374151;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Air waybill:</strong> ${escapeHtml(shipment.airWaybill)}</div>
-        <div style="margin:0 0 10px;color:#374151;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Route:</strong> ${escapeHtml(`${shipment.origin} to ${shipment.destination}`)}</div>
-        <div style="margin:0 0 10px;color:#374151;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Item status summary:</strong> ${escapeHtml(formatShipmentStatusLabel(shipment.status))}</div>
-        <div style="margin:0 0 10px;color:#374151;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Package details:</strong> ${escapeHtml(shipment.packageType)}</div>
-        <div style="margin:0;color:#374151;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Delivery timeline:</strong> ${escapeHtml(shipment.eta)}</div>
+        <div style="margin:0 0 10px;color:#111827;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Tracking number:</strong> ${escapeHtml(shipment.ref)}</div>
+        <div style="margin:0 0 10px;color:#111827;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Air waybill:</strong> ${escapeHtml(shipment.airWaybill)}</div>
+        <div style="margin:0 0 10px;color:#111827;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Route:</strong> ${escapeHtml(`${shipment.origin} to ${shipment.destination}`)}</div>
+        <div style="margin:0 0 10px;color:#111827;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Item status summary:</strong> ${escapeHtml(formatShipmentStatusLabel(shipment.status))}</div>
+        <div style="margin:0 0 10px;color:#111827;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Package details:</strong> ${escapeHtml(shipment.packageType)}</div>
+        <div style="margin:0;color:#111827;font-size:15px;line-height:1.7;"><strong style="color:#111827;">Delivery timeline:</strong> ${escapeHtml(shipment.eta)}</div>
       </div>
       ${clearanceBlock}
     `,

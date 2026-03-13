@@ -410,7 +410,7 @@ export const defaultSiteContent: SiteContent = {
     title: "Let Swift Signate handle your next delivery.",
     copy:
       "Speak with our team or track an existing shipment through a simple and familiar customer experience.",
-    primaryLabel: "Request a Quote",
+    primaryLabel: "Contact Us",
     secondaryLabel: "Track Shipment"
   },
   customerPages: {
@@ -482,7 +482,11 @@ export function mergeSiteContent(content: Partial<SiteContent> | null | undefine
     },
     contactCta: {
       ...defaultSiteContent.contactCta,
-      ...parsed.contactCta
+      ...parsed.contactCta,
+      primaryLabel:
+        parsed.contactCta?.primaryLabel === "Request a Quote"
+          ? defaultSiteContent.contactCta.primaryLabel
+          : (parsed.contactCta?.primaryLabel ?? defaultSiteContent.contactCta.primaryLabel)
     },
     customerPages: {
       ...defaultSiteContent.customerPages,

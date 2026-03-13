@@ -28,12 +28,14 @@ function MediaTile({
   source,
   title,
   className,
-  tintedOverlay = false
+  tintedOverlay = false,
+  shimmer = false
 }: {
   source?: string;
   title: string;
   className: string;
   tintedOverlay?: boolean;
+  shimmer?: boolean;
 }) {
   const media = resolveMediaSource(source);
   const backgroundImage = mediaSourceToBackground(source);
@@ -45,6 +47,7 @@ function MediaTile({
         {tintedOverlay && (
           <div className="pointer-events-none absolute inset-0 bg-ember/20 transition-opacity duration-300 group-hover:opacity-0" />
         )}
+        {shimmer && <div aria-hidden="true" className="media-shimmer" />}
       </div>
     );
   }
@@ -95,6 +98,7 @@ function MediaTile({
       {tintedOverlay && (
         <div className="pointer-events-none absolute inset-0 bg-ember/20 transition-opacity duration-300 group-hover:opacity-0" />
       )}
+      {shimmer && <div aria-hidden="true" className="media-shimmer" />}
     </div>
   );
 }
@@ -186,6 +190,7 @@ function ServiceCard({
           source={card.image}
           title={card.title}
           tintedOverlay
+          shimmer
           className={stacked ? "h-56 w-full md:h-[320px]" : "h-48 w-full"}
         />
 
@@ -515,10 +520,17 @@ export function LandingPage() {
 
           <div className="flex flex-col items-stretch gap-3 lg:justify-start">
             <GlowButton
+              onClick={() => setContactOpen(true)}
+              label={content.contactCta.primaryLabel}
+              shape="parallelogram"
+              className="w-full justify-center sm:min-w-[220px]"
+            />
+            <GlowButton
               href="/dashboard/track"
               label={content.contactCta.secondaryLabel}
+              variant="ghost"
               shape="parallelogram"
-              className="w-full sm:min-w-[220px]"
+              className="w-full justify-center sm:min-w-[220px]"
             />
           </div>
         </div>
