@@ -6,7 +6,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { GlowButton } from "@/components/buttons";
 import { LogoMark } from "@/components/logo-mark";
 import { useSiteContentStore } from "@/components/site-content-store";
-import { buildMailHref, buildWhatsAppHref } from "@/lib/contact-links";
 
 type ContactForm = {
   name: string;
@@ -27,19 +26,6 @@ type NavigationProps = {
   contactOpen?: boolean;
   onContactOpenChange?: (open: boolean) => void;
 };
-
-function buildContactMessage(form: ContactForm) {
-  return [
-    "Hello Swift Signate,",
-    "",
-    `Name: ${form.name || "-"}`,
-    `Email: ${form.email || "-"}`,
-    `Phone: ${form.phone || "-"}`,
-    "",
-    "Message:",
-    form.message || "-"
-  ].join("\n");
-}
 
 export function Navigation({ showContactButton = true, contactOpen, onContactOpenChange }: NavigationProps) {
   const [internalContactOpen, setInternalContactOpen] = useState(false);
@@ -86,10 +72,6 @@ export function Navigation({ showContactButton = true, contactOpen, onContactOpe
       window.removeEventListener("keydown", handleEscape);
     };
   }, [isContactOpen]);
-
-  const contactMessage = buildContactMessage(form);
-  const whatsappHref = buildWhatsAppHref(content.navigation.whatsappHref, contactMessage);
-  const emailHref = buildMailHref(content.navigation.contactEmail, "Logistics Inquiry", contactMessage);
 
   const handleContactSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -204,7 +186,7 @@ export function Navigation({ showContactButton = true, contactOpen, onContactOpe
                       value={form.name}
                       onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                       className="h-10 w-full rounded-2xl border border-black/10 bg-white px-3.5 text-sm text-neutral-900 outline-none transition-colors focus:border-orange-300"
-                      placeholder="Your agent name"
+                      placeholder="name"
                     />
                   </label>
 
@@ -261,32 +243,6 @@ export function Navigation({ showContactButton = true, contactOpen, onContactOpe
                   </div>
                 </form>
 
-                <div className="mt-4 border-t border-black/8 pt-4">
-                  <div className="text-[13px] font-medium text-neutral-700">Prefer a direct channel?</div>
-                  <div className="mt-2.5 grid grid-cols-2 gap-2">
-                    <a
-                      href={whatsappHref}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-full bg-[#25D366] px-3 text-sm font-medium text-white transition-opacity hover:opacity-92"
-                      >
-                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
-                        <path d="M19.05 4.93A9.94 9.94 0 0 0 12 2a10 10 0 0 0-8.66 15l-1.3 4.75 4.87-1.28A10 10 0 1 0 19.05 4.93ZM12 20.15a8.1 8.1 0 0 1-4.13-1.13l-.3-.18-2.9.76.78-2.82-.2-.3A8.15 8.15 0 1 1 12 20.15Zm4.47-6.1c-.24-.12-1.4-.69-1.62-.77-.22-.08-.38-.12-.54.12-.16.24-.62.77-.77.93-.14.16-.28.18-.52.06-.24-.12-1-.36-1.9-1.15-.7-.62-1.18-1.4-1.32-1.63-.14-.24-.02-.37.1-.49.1-.1.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.54-1.3-.74-1.78-.2-.47-.4-.4-.54-.4h-.46c-.16 0-.42.06-.64.3-.22.24-.84.82-.84 2 0 1.18.86 2.32.98 2.48.12.16 1.7 2.6 4.12 3.64.58.25 1.03.4 1.39.5.58.18 1.1.15 1.52.09.46-.07 1.4-.57 1.6-1.12.2-.55.2-1.02.14-1.12-.06-.1-.22-.16-.46-.28Z" />
-                      </svg>
-                      {content.navigation.whatsappLabel}
-                    </a>
-                    <a
-                      href={emailHref}
-                      className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-full border border-black/10 bg-white px-3 text-sm font-medium text-neutral-900 transition-colors hover:border-orange-300 hover:text-ember"
-                    >
-                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                        <path d="M4 7.5h16v9H4z" />
-                        <path d="m5.5 9 6.5 4.8L18.5 9" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                      {content.navigation.emailLabel}
-                    </a>
-                  </div>
-                </div>
               </motion.div>
             </div>
           </motion.div>
