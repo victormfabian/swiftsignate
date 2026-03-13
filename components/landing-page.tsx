@@ -9,7 +9,6 @@ import { IconGlyph } from "@/components/icon-glyph";
 import { Navigation } from "@/components/navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { useSiteContentStore } from "@/components/site-content-store";
-import { buildWhatsAppHref } from "@/lib/contact-links";
 import { mediaSourceToBackground, resolveMediaSource } from "@/lib/media-utils";
 
 function CardIcon({ icon }: { icon: string }) {
@@ -28,14 +27,12 @@ function MediaTile({
   source,
   title,
   className,
-  tintedOverlay = false,
-  shimmer = false
+  tintedOverlay = false
 }: {
   source?: string;
   title: string;
   className: string;
   tintedOverlay?: boolean;
-  shimmer?: boolean;
 }) {
   const media = resolveMediaSource(source);
   const backgroundImage = mediaSourceToBackground(source);
@@ -47,7 +44,6 @@ function MediaTile({
         {tintedOverlay && (
           <div className="pointer-events-none absolute inset-0 bg-ember/20 transition-opacity duration-300 group-hover:opacity-0" />
         )}
-        {shimmer && <div aria-hidden="true" className="media-shimmer" />}
       </div>
     );
   }
@@ -98,7 +94,6 @@ function MediaTile({
       {tintedOverlay && (
         <div className="pointer-events-none absolute inset-0 bg-ember/20 transition-opacity duration-300 group-hover:opacity-0" />
       )}
-      {shimmer && <div aria-hidden="true" className="media-shimmer" />}
     </div>
   );
 }
@@ -151,20 +146,9 @@ function WhyUsQuoteBlock({
   );
 }
 
-function GuidanceMessage({ href, className = "" }: { href: string; className?: string }) {
+function GuidanceMessage({ className = "" }: { className?: string }) {
   return (
-    <div className={["text-sm leading-7 text-neutral-600", className].join(" ")}>
-      For more guidance, chat us up on{" "}
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-        className="font-medium text-ember underline decoration-orange-200 underline-offset-4"
-      >
-        WhatsApp
-      </a>
-      .
-    </div>
+    <div className={["text-sm leading-7 text-neutral-600", className].join(" ")}>Contact Us for more guidance.</div>
   );
 }
 
@@ -190,7 +174,6 @@ function ServiceCard({
           source={card.image}
           title={card.title}
           tintedOverlay
-          shimmer
           className={stacked ? "h-56 w-full md:h-[320px]" : "h-48 w-full"}
         />
 
@@ -259,7 +242,6 @@ export function LandingPage() {
   const servicesSectionRef = useRef<HTMLElement | null>(null);
   const shouldRevealHeroPanelRef = useRef(false);
   const { content } = useSiteContentStore();
-  const whatsappSupportHref = buildWhatsAppHref(content.navigation.whatsappHref);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -484,7 +466,7 @@ export function LandingPage() {
                 {content.process.title}
               </h2>
               <p className="mt-5 max-w-xl text-lg leading-8 text-neutral-600">{content.process.copy}</p>
-              <GuidanceMessage href={whatsappSupportHref} className="mt-8 hidden max-w-md lg:mt-auto lg:block" />
+              <GuidanceMessage className="mt-8 hidden max-w-md lg:mt-auto lg:block" />
             </div>
 
             <div className="grid gap-4 md:auto-rows-fr">
@@ -502,7 +484,7 @@ export function LandingPage() {
                   <p className="mt-2 flex-1 text-base leading-7 text-neutral-600">{step.copy}</p>
                 </motion.div>
               ))}
-              <GuidanceMessage href={whatsappSupportHref} className="mt-1 lg:hidden" />
+              <GuidanceMessage className="mt-1 lg:hidden" />
             </div>
           </div>
         </div>

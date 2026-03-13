@@ -197,14 +197,14 @@ export function Navigation({ showContactButton = true, contactOpen, onContactOpe
                   onSubmit={handleContactSubmit}
                 >
                   <label className="col-span-2 block">
-                    <span className="mb-1 block text-[13px] font-medium text-neutral-700">Full Name</span>
+                    <span className="mb-1 block text-[13px] font-medium text-neutral-700">Agent Name</span>
                     <input
                       type="text"
                       required
                       value={form.name}
                       onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                       className="h-10 w-full rounded-2xl border border-black/10 bg-white px-3.5 text-sm text-neutral-900 outline-none transition-colors focus:border-orange-300"
-                      placeholder="Your full name"
+                      placeholder="Your agent name"
                     />
                   </label>
 
