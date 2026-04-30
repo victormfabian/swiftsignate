@@ -925,6 +925,36 @@ export function DashboardPage({
     setTrackingQuery(normalizedReference);
   };
 
+  const buildShipmentShareLink = (ref: string) =>
+    `${window.location.origin}/dashboard/track?ref=${encodeURIComponent(ref)}`;
+
+  const handleShareShipmentDetails = async () => {
+    if (!trackingResult) {
+      return;
+    }
+
+    const shipmentLink = buildShipmentShareLink(trackingResult.ref);
+    const shareData = {
+      title: `Track shipment ${trackingResult.ref}`,
+      text: `Track shipment ${trackingResult.ref} with Swift Signate`,
+      url: shipmentLink
+    };
+
+    if (!navigator.share || !window.isSecureContext) {
+      setNotice("Device sharing is not available in this browser. Try opening this page on a mobile browser.");
+      return;
+    }
+
+    try {
+      const canShare = typeof navigator.canShare !== "function" || navigator.canShare(shareData);
+      await navigator.share(canShare ? shareData : { title: shareData.title, url: shipmentLink });
+      setNotice("Shipment details shared.");
+    } catch (error) {
+      if ((error as Error).name !== "AbortError") {
+        setNotice("Device sharing could not be opened in this browser.");
+      }
+    }
+  };
 
   const handleCompletePartnerProfile = () => {
     void (async () => {
@@ -2037,64 +2067,78 @@ export function DashboardPage({
         </div>
       </div>
 
-      <div className="rounded-[28px] bg-white p-6 shadow-[0_14px_28px_rgba(140,110,78,0.06)]">
-        {trackingLookupLoading ? (
-          <div className="flex min-h-[320px] items-center justify-center rounded-[24px] bg-[#fcfaf7] p-6 text-center text-sm leading-7 text-neutral-600">
-            Checking your shipment status...
-          </div>
-        ) : trackingResult ? (
-          <>
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <SectionBadge label="Shipment Details" />
-                <h2 className="mt-3 text-2xl font-semibold text-neutral-950">{trackingResult.ref}</h2>
-              </div>
-              <span
-                className={[
-                  "rounded-full border px-4 py-2 text-xs uppercase tracking-[0.18em]",
-                  statusClasses(trackingResult.status)
-                ].join(" ")}
-              >
-                {formatShipmentStatusLabel(trackingResult.status)}
-              </span>
-            </div>
-
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <div className="rounded-[20px] bg-[#fcfaf7] p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
-                <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Route</div>
-                <div className="mt-2 text-sm font-medium text-neutral-900">
-                  {trackingResult.origin} {"->"} {trackingResult.destination}
-                </div>
-              </div>
-              <div className="rounded-[20px] bg-[#fcfaf7] p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
-                <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Estimated delivery</div>
-                <div className="mt-2 text-sm font-medium text-neutral-900">{trackingResult.eta}</div>
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-[20px] bg-[#fcfaf7] p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
-              <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Latest update</div>
-              <div className="mt-2 text-sm leading-7 text-neutral-700">{trackingResult.lastUpdate}</div>
-            </div>
-
-            <div className="mt-6 grid gap-3 md:grid-cols-5">
-              {shipmentSteps.map((step, index) => (
-                <div key={step} className="flex items-center justify-between gap-3 rounded-[18px] bg-[#fcfaf7] p-4">
-                  <div className="flex-1 text-sm font-medium text-neutral-700">{formatShipmentStatusLabel(step)}</div>
-                  <TrackingStatusMarker complete={index <= activeStepIndex} />
-                </div>
-              ))}
-            </div>
-          </>
-        ) : !trackingLookupStarted ? (
-          <div className="flex min-h-[320px] items-center justify-center rounded-[24px] bg-[#fcfaf7] p-6 text-center text-sm leading-7 text-neutral-600">
-            Enter a tracking number to get started.
-          </div>
-        ) : (
-          <div className="flex min-h-[320px] items-center justify-center rounded-[24px] bg-[#fcfaf7] p-6 text-center text-sm leading-7 text-neutral-600">
-            No shipment matches that number.
+      <div className="flex flex-col gap-3">
+        {trackingResult && (
+          <div className="flex justify-end px-3">
+            <button
+              type="button"
+              onClick={handleShareShipmentDetails}
+              className="inline-flex h-11 items-center justify-center rounded-full px-4 text-sm font-semibold text-neutral-950 transition hover:text-neutral-900"
+            >
+              Share
+            </button>
           </div>
         )}
+
+        <div className="rounded-[28px] bg-white p-6 shadow-[0_14px_28px_rgba(140,110,78,0.06)]">
+          {trackingLookupLoading ? (
+            <div className="flex min-h-[320px] items-center justify-center rounded-[24px] bg-[#fcfaf7] p-6 text-center text-sm leading-7 text-neutral-600">
+              Checking your shipment status...
+            </div>
+          ) : trackingResult ? (
+            <>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <SectionBadge label="Shipment Details" />
+                  <h2 className="mt-3 text-2xl font-semibold text-neutral-950">{trackingResult.ref}</h2>
+                </div>
+                <span
+                  className={[
+                    "self-end rounded-full border px-4 py-2 text-xs uppercase tracking-[0.18em] sm:self-start",
+                    statusClasses(trackingResult.status)
+                  ].join(" ")}
+                >
+                  {formatShipmentStatusLabel(trackingResult.status)}
+                </span>
+              </div>
+
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                <div className="rounded-[20px] bg-[#fcfaf7] p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
+                  <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Route</div>
+                  <div className="mt-2 text-sm font-medium text-neutral-900">
+                    {trackingResult.origin} {"->"} {trackingResult.destination}
+                  </div>
+                </div>
+                <div className="rounded-[20px] bg-[#fcfaf7] p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
+                  <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Estimated delivery</div>
+                  <div className="mt-2 text-sm font-medium text-neutral-900">{trackingResult.eta}</div>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-[20px] bg-[#fcfaf7] p-4 shadow-[0_8px_16px_rgba(140,110,78,0.05)]">
+                <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Latest update</div>
+                <div className="mt-2 text-sm leading-7 text-neutral-700">{trackingResult.lastUpdate}</div>
+              </div>
+
+              <div className="mt-6 grid gap-3 md:grid-cols-5">
+                {shipmentSteps.map((step, index) => (
+                  <div key={step} className="flex items-center justify-between gap-3 rounded-[18px] bg-[#fcfaf7] p-4">
+                    <div className="flex-1 text-sm font-medium text-neutral-700">{formatShipmentStatusLabel(step)}</div>
+                    <TrackingStatusMarker complete={index <= activeStepIndex} />
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : !trackingLookupStarted ? (
+            <div className="flex min-h-[320px] items-center justify-center rounded-[24px] bg-[#fcfaf7] p-6 text-center text-sm leading-7 text-neutral-600">
+              Enter a tracking number to get started.
+            </div>
+          ) : (
+            <div className="flex min-h-[320px] items-center justify-center rounded-[24px] bg-[#fcfaf7] p-6 text-center text-sm leading-7 text-neutral-600">
+              No shipment matches that number.
+            </div>
+          )}
+        </div>
       </div>
     </motion.div>
   );
